@@ -99,20 +99,50 @@ print(f"Área promedio: {areas.mean():.0f} px²")
 # Objetos muy pequeños pueden ser falsos positivos o ruido
 objetos_grandes = detections[detections.area > 5000]
 print(f"\nObjetos con área > 5000 px²: {len(objetos_grandes)}")
-mostrar(objetos_grandes, "Solo objetos grandes (área > 5000 px²)")
+# mostrar(objetos_grandes, "Solo objetos grandes (área > 5000 px²)")
 
 #######################################################################
 
-fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-for ax, thresh in zip(axes, [0.3, 0.5, 0.8]):
-    filtered = sv.Detections.merge([det_baja, det_alta]).with_nms(threshold=thresh)
-    etiquetas = [results.names[c] for c in filtered.class_id]
-    scene = box_annotator.annotate(scene=image.copy(), detections=filtered)
-    scene = label_annotator.annotate(scene=scene, detections=filtered, labels=etiquetas)
-    ax.imshow(cv2.cvtColor(scene, cv2.COLOR_BGR2RGB))
-    ax.set_title(f"NMS threshold={thresh}\n({len(filtered)} objetos)")
-    ax.axis("off")
-plt.tight_layout()
-plt.show()
-# 💭 Reflexión: threshold más bajo → más estricto (menos objetos).
-# ¿Por qué? Porque permite menos solapamiento antes de eliminar una caja.
+# fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+# for ax, thresh in zip(axes, [0.3, 0.5, 0.8]):
+#     filtered = sv.Detections.merge([det_baja, det_alta]).with_nms(threshold=thresh)
+#     etiquetas = [results.names[c] for c in filtered.class_id]
+#     scene = box_annotator.annotate(scene=image.copy(), detections=filtered)
+#     scene = label_annotator.annotate(scene=scene, detections=filtered, labels=etiquetas)
+#     ax.imshow(cv2.cvtColor(scene, cv2.COLOR_BGR2RGB))
+#     ax.set_title(f"NMS threshold={thresh}\n({len(filtered)} objetos)")
+#     ax.axis("off")
+# plt.tight_layout()
+# plt.show()
+
+#######################################################################
+
+# Clase 5 = 'bus' en COCO
+# != excluye en lugar de incluir — la lógica es idéntica a la inclusión
+sin_buses = detections[detections.class_id != 5]
+print(f"Con buses: {len(detections)} | Sin buses: {len(sin_buses)}")
+# mostrar(sin_buses, "Sin autobuses (clase 5 excluida)")
+
+#######################################################################
+
+# np.argsort devuelve los índices que ordenarían el array de menor a mayor
+# [::-1] invierte el orden (de mayor a menor)
+# [:3] toma los primeros 3 índices
+indices_top3 = np.argsort(detections.confidence)[::-1][:3]
+top3 = detections[indices_top3]
+
+print("Top 3 detecciones por confianza:")
+for i in range(len(top3)):
+    print(f"  {results.names[top3.class_id[i]]}: {top3.confidence[i]:.1%}")
+
+# mostrar(top3, "Top 3 detecciones más confiables")
+
+#######################################################################
+
+# Escribe tu solución aquí
+centros_x = (detections.xyxy[:, 0] + detections.xyxy[:, 2]) / 2
+mitad_imagen = image.shape[1] / 2
+mascara = centros_x > mitad_imagen
+detecciones_derecha = detections[mascara]
+
+mostrar(detecciones_derecha, "Mitad derecha")
