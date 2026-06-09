@@ -1,3 +1,6 @@
 *.pt
 *.mp4
 *.avi
+*.nix
+*.lock
+*.envrc
