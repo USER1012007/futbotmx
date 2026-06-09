@@ -4,3 +4,5 @@
 *.nix
 *.lock
 *.envrc
+
+.direnv/
