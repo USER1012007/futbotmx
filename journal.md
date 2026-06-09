@@ -9,4 +9,6 @@ Nos pareció relevante observar que la mayoría de vídeos eran muy cortos y con
 
 ## 09-Jun-2026
 
+El dia de hoy estuvimos discutiendo acerca de la estructura y el pipeline que llevaremos a cabo para el proyecto, esto con el objetivo de tener una idea clara de qué cosas vamos a hacer y cómo las vamos a hacer, además de definir qué cosas son necesarias para llevar a cabo el proyecto y qué cosas no lo son.
 
+> Emilio R. (USER1012007)
