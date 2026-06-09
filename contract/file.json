@@ -1,0 +1,53 @@
+{
+    "frame": 42,
+    "timestamp": 1.4,
+
+    "robots_aliados": [
+        {"id": "A1", "pos": [x1, y1], "tracker_id": 3},
+        {"id": "A2", "pos": [x2, y2], "tracker_id": 7}
+    ],
+    "robots_rivales": [
+        {"id": "R1", "pos": [x3, y3], "tracker_id": 12},
+        {"id": "R2", "pos": [x4, y4], "tracker_id": 15}
+    ],
+    "balon": {
+        "pos": [x5, y5],        
+        "tracker_id": 1,        
+        "velocidad_cm_s": 45.2  
+    },
+
+    "eventos": [
+        {
+            "tipo": "colision",
+            "robots": ["A1", "R1"],     
+            "pos": [x, y]               
+        },
+        {
+            "tipo": "posesion",
+            "robot": "A2",              
+            "distancia_cm": 8.3         
+        },
+        {
+            "tipo": "tiro_a_gol",
+            "equipo": "aliado",         
+            "velocidad_cm_s": 120.5,    
+            "porteria": "rival"         
+        },
+        {
+            "tipo": "pase",
+            "de": "A1",
+            "a": "A2",                  
+            "distancia_cm": 35.0
+        },
+        {
+            "tipo": "fuera_de_cancha",
+            "objeto": "balon",          
+            "pos_ultima": [x, y]        
+        },
+        {
+            "tipo": "robot_detenido",
+            "robot": "R2",
+            "duracion_frames": 45       
+        }
+    ]
+}
