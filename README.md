@@ -4,30 +4,30 @@ SAM 3 Vi project
 # Estructura del proyecto
 ```
 futbotmx/
-├── code
+├── code/
 │   ├── domain/                   # Declaracion de entidades y objetos
 │   │   ├── entities.py           # Ball, Robot, Field, Team (dataclasses)
 │   │   ├── events.py             # GameEvent, Goal, Pass, Shot, Collision
 │   │   └── stats.py              # MatchStats, posesión, distancia
 │   │
-│   ├── io
+│   ├── io/
 │   │   ├── video_source.py       # Abstrae .mp4 / cámara
 │   │   └── tracking_io.py        # Funciones para leer y escribir archivos de tracking
 │   │
-│   ├── vision
+│   ├── vision/
 │   │   ├── homography.py         # Cálculo de la homografía
 │   │   ├── pipeline.py           # Loop principal
 │   │   └── segmentation.py       # Detecciones por frame con SAM
 │   │
-│   ├── analysis                  # Escucha events, computa stats
+│   ├── analysis/                 # Escucha events, computa stats
 │   │   ├── event_detector.py     # FrameResult -> dispara GameEvents
 │   │   └── stats_engine.py       # Acumula MatchStats desde eventos
 │   │
-│   ├── infra                     # EventBus y configuración
+│   ├── infra/                    # EventBus y configuración
 │   │   ├── event_bus.py          # publish/subscribe
 │   │   └── configs.py            # Configuraciones generales del proyecto
 │   │
-│   ├── data                      # Datos de entrada y salida
+│   ├── data/                     # Datos de entrada y salida
 │   │   ├── outputs/              # Resultados de los scripts de vision y analisis
 │   │   ├── tracking/             # Resultados de tracking por frame
 │   │   │   └── tracking.jsonl    # Resultados de tracking en formato jsonl
@@ -35,15 +35,15 @@ futbotmx/
 │   │
 │   ├── main.py                   # Script principal para correr el proyecto
 │   │
-│   └── visualization
+│   └── visualization/
 │       ├── dashboard.py          # Matplotlib plots
 │       ├── tactical_map.py       # Draw_tactical_map, trails, heatmap
 │       └── video_render.py       # Video lado a lado + canvas cenital
 │   
-├── contract                      # Api de transferencia de datos
+├── contract/                     # Api de transferencia de datos
 │   └── file.json 
 │   
-├── docs                          # Información de la convocatoria
+├── docs/                          # Información de la convocatoria
 │   ├── Convocatoria_CopaFutBotMX-Meta-VF-20260429T020141.pdf
 │   └── doc.md
 │   
@@ -51,10 +51,10 @@ futbotmx/
 │   
 ├── LICENSE                       # Licencia
 │   
-├── notebooks                     # Carpeta de notebooks personales
-│   ├── dario
+├── notebooks/                    # Carpeta de notebooks personales
+│   ├── dario/
 │   │   └── notebooks...          # Notebooks de dario
-│   └── rojas
+│   └── rojas/
 │       └── notebooks...          # Notebooks de rojas
 │   
 └── README.md                     # Documentacion del proyecto
