@@ -10,6 +10,7 @@ class Score:
 class PossessionPct:
     allies: float = 0.0
     rivals: float = 0.0
+
 @dataclass
 class DistanceCm:
     allies_distance: float = 0.0
@@ -18,5 +19,5 @@ class DistanceCm:
 @dataclass
 class Statistics:
     possession_pct: PossessionPct
-    distance_cm: List[DistanceCm]
+    distance_cm: Dict[str, float] = field(default_factory=dict)
 
