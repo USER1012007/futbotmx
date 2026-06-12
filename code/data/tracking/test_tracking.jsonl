@@ -1,0 +1,10 @@
+{"frame_id": 0, "data": {"robot_id": "robot_0", "pos": [0, 0]}}
+{"frame_id": 1, "data": {"robot_id": "robot_1", "pos": [1, 2]}}
+{"frame_id": 2, "data": {"robot_id": "robot_2", "pos": [2, 4]}}
+{"frame_id": 3, "data": {"robot_id": "robot_3", "pos": [3, 6]}}
+{"frame_id": 4, "data": {"robot_id": "robot_4", "pos": [4, 8]}}
+{"frame_id": 5, "data": {"robot_id": "robot_5", "pos": [5, 10]}}
+{"frame_id": 6, "data": {"robot_id": "robot_6", "pos": [6, 12]}}
+{"frame_id": 7, "data": {"robot_id": "robot_7", "pos": [7, 14]}}
+{"frame_id": 8, "data": {"robot_id": "robot_8", "pos": [8, 16]}}
+{"frame_id": 9, "data": {"robot_id": "robot_9", "pos": [9, 18]}}

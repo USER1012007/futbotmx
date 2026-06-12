@@ -7,3 +7,4 @@
 *.png
 
 .direnv/
+__pycache__/

@@ -21,8 +21,15 @@ class Team:
 
 @dataclass
 class Ball:
-    id: str = "ball_01"
+    id: str = "ball"
     position: Tuple[float, float] = (0.0, 0.0)
     tracker_id: Optional[int] = None
     speed_cm_s: float = 0.0
     direction_vector: Tuple[float, float] = (0.0, 0.0)
+
+@dataclass
+class FrameResult:
+    frame_id: int
+    robots: List[Robot]
+    ball: Optional[Ball]
+

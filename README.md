@@ -10,7 +10,7 @@ futbotmx/
 │   │   ├── events.py             # GameEvent, Goal, Pass, Shot, Collision
 │   │   └── stats.py              # MatchStats, posesión, distancia
 │   │
-│   ├── io/
+│   ├── io_utils/
 │   │   ├── video_source.py       # Abstrae .mp4 / cámara
 │   │   └── tracking_io.py        # Funciones para leer y escribir archivos de tracking
 │   │
