@@ -1,20 +1,35 @@
 {
     "frame": 42,
     "timestamp": 1.4,
+    "duracion_total_s": 180.0,  
 
     "robots_aliados": [
-        {"id": "A1", "pos": [x1, y1], "tracker_id": 3},
-        {"id": "A2", "pos": [x2, y2], "tracker_id": 7}
+        {"id": "A1", "pos": [x1, y1], "tracker_id": 3, "angulo_deg": 45.0},
+        {"id": "A2", "pos": [x2, y2], "tracker_id": 7, "angulo_deg": 45.0}
     ],
+
     "robots_rivales": [
-        {"id": "R1", "pos": [x3, y3], "tracker_id": 12},
-        {"id": "R2", "pos": [x4, y4], "tracker_id": 15}
+        {"id": "R1", "pos": [x3, y3], "tracker_id": 12, "angulo_deg": 45.0},
+        {"id": "R2", "pos": [x4, y4], "tracker_id": 15, "angulo_deg": 45.0}
     ],
+
     "balon": {
         "pos": [x5, y5],        
         "tracker_id": 1,        
-        "velocidad_cm_s": 45.2  
+        "velocidad_cm_s": 45.2,
+        "vector_direccion": [dx, dy]
     },
+
+    "marcador": {
+        "aliados": 1,
+        "rivales": 0
+    },
+
+    "estadisticas": {
+        "posesion_pct": {"aliados": 62, "rivales": 38},
+        "distancia_cm": {"A1": 340.2, "A2": 289.7, "R1": 410.1, "R2": 95.3}
+    },
+
 
     "eventos": [
         {

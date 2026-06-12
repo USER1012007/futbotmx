@@ -4,5 +4,6 @@
 *.nix
 *.lock
 *.envrc
+*.png
 
 .direnv/
