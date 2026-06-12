@@ -1,19 +1,22 @@
-@dataclass
-class Marcador:
-    aliados: int = 0
-    rivales: int = 0
+from dataclasses import dataclass
+from typing import List, Tuple, Literal
 
 @dataclass
-class PosesionPct:
-    aliados: float = 0.0
-    rivales: float = 0.0
-@dataclass
-class DistanciaCm:
-    distancia_aliadios: float = 0.0
-    distancia_rivales: float = 0.0
+class Score:
+    allies: int = 0
+    rivals: int = 0
 
 @dataclass
-class Estadisticas:
-    posesion_pct: PosesionPct
-    distancia_cm: List[DistanciaCm]
+class PossessionPct:
+    allies: float = 0.0
+    rivals: float = 0.0
+@dataclass
+class DistanceCm:
+    allies_distance: float = 0.0
+    rivals_distance: float = 0.0
+
+@dataclass
+class Statistics:
+    possession_pct: PossessionPct
+    distance_cm: List[DistanceCm]
 
