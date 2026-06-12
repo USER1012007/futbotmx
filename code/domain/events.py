@@ -1,60 +1,55 @@
 from dataclasses import dataclass
 from typing import List, Tuple, Literal, Union
+from domain.entities import Robot, Ball, Team
 
 @dataclass
 class Event:
     pass
 
 @dataclass
-class ColisionEvent(Event):
-    tipo: Literal["colision"] 
+class CollisionEvent(Event):
+    type: Literal["colision"] 
     robots: List[Robot] 
-    pos: Tuple[float, float] 
+    position: Tuple[float, float] 
 
 @dataclass
-class PosesionEvent(Event):
-    tipo: Literal["posesion"]
+class PossessionEvent(Event):
+    type: Literal["posesion"]
     robot: Robot 
-    distancia_cm: float 
+    distance_cm: float 
 
 @dataclass
-class TiroAGolEvent(Event):
-    tipo: Literal["tiro_a_gol"]
-    equipo: Literal["aliado", "rival"]
-    velocidad_cm_s: float
-    porteria: Literal["propia", "rival"]
+class ShotOnGoalEvent(Event):
+    type: Literal["tiro a gol"]
+    team: Team
+    velocity_cm_s: float
+    goal: str
 
 @dataclass
-class PaseEvent(Event):
-    tipo: Literal["pase"]
-    de:  Robot.id
-    a: Robot.id
-    distancia_cm: float
+class PassEvent(Event):
+    type: Literal["pase"]
+    from_id: str
+    to: str
+    distance_cm: float
 
 @dataclass
-class FueraDeCanchaEvent(Event):
-    tipo: Literal["fuera_de_cancha"]
-    objeto: Literal[Ball, Robot] 
-    pos_ultima: Tuple[float, float] 
+class OffCourtEvent(Event):
+    type: Literal["fuera_de_cancha"]
+    object: Literal["balon", "robot"]
+    last_position: Tuple[float, float] 
 
 @dataclass
-class RobotDetenidoEvent(Event):
-    tipo: Literal["robot_detenido"]
-    robot: Robot.id
-    duracion_frames: int 
+class RobotStoppedEvent(Event):
+    type: Literal["robot_detenido"]
+    robot: Robot
+    frames_duration: int 
 
 @dataclass
 class PanicEvent(Event):
-    tipo: Literal["panic"]
-    duracion_frames: int 
+    type: Literal["panic"]
+    frames_duration: int 
 
 @dataclass
 class FrameEvents:
-    eventos: List[Union[ColisionEvent,
-                        PosesionEvent,
-                        TiroAGolEvent,
-                        PaseEvent,
-                        FueraDeCanchaEvent,
-                        RobotDetenidoEvent,
-                        PanicEvent]]
+    eventos: List[Union[CollisionEvent, PossessionEvent, ShotOnGoalEvent, PassEvent, OffCourtEvent, RobotStoppedEvent, PanicEvent]]
 
