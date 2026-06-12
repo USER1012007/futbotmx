@@ -91,7 +91,7 @@ Lee y escribe el archivo `tracking.jsonl` — el registro persistente de todas l
 Define qué cosas existen en el mundo del fútbol robótico y qué eventos ocurren en él. No tiene lógica algorítmica — solo declaraciones.
 
 ### `domain/entities.py`
-Declara los objetos que existen en el partido: `Ball`, `Robot`, `Field`, `Team`. Son `dataclasses` puras — estructuras de datos tipadas que describen el estado del mundo en un instante dado. Ningún módulo inventa su propio formato para representar una pelota; todos usan `Ball`. Esto garantiza coherencia en todo el proyecto.
+Declara los objetos que existen en el partido: `Ball`, `Robot`, `Team`. Son `dataclasses` puras — estructuras de datos tipadas que describen el estado del mundo en un instante dado. Ningún módulo inventa su propio formato para representar una pelota; todos usan `Ball`. Esto garantiza coherencia en todo el proyecto.
 
 ### `domain/events.py`
 Declara las cosas que ocurren durante el partido: `GoalScored`, `BallPossession`, `ShotDetected`, `Collision`, `PassDetected`. Los eventos son inmutables — representan hechos que ya sucedieron. Son la moneda de cambio del `EventBus`: `analysis/` los emite, `stats/` y `visualization/` los consumen.
