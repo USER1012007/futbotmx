@@ -30,6 +30,7 @@
         "distancia_cm": {"A1": 340.2, "A2": 289.7, "R1": 410.1, "R2": 95.3}
     },
 
+
     "eventos": [
         {
             "tipo": "colision",
