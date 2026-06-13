@@ -12,24 +12,27 @@ def test_segmentation():
     cfg = Config()
     engine = SegmentationEngine(cfg)
     
-    # 2. Cargar imagen de prueba (usamos un asset existente si hay)
-    # Por ahora, asegurémonos de que exista un frame
-    image_path = "./data/videos/futbot-01.jpg"
+    # 2. Cargar imagen de prueba
+    image_path = "../notebooks/rojas/assets/futbot-01.jpg"
     if not os.path.exists(image_path):
         print(f"Imagen de prueba no encontrada en {image_path}. Prueba fallida.")
         return
 
     frame = cv2.imread(image_path)
-    
-    # 3. Ejecutar procesamiento
-    print("Procesando frame con YOLO/SAM...")
-    result = engine.process_frame(frame, frame_id=0)
-    
-    # 4. Validar
-    assert isinstance(result, FrameResult)
-    print(f"FrameResult generado con éxito:")
-    print(f"   - Robots detectados: {len(result.robots)}")
-    print(f"   - Pelota detectada: {result.ball is not None}")
+    if frame is None:
+        print(f"Error: cv2.imread no pudo cargar la imagen en {image_path}")
+        return
+
+    print(f"Imagen cargada correctamente: {frame.shape}")
+
+    print(type(frame))
+    dets_hsv = engine.detect_robots_hsv(frame)
+    print(f"Detecciones HSV: {len(dets_hsv)}  — bboxes que usaremos como prompts para SAM")
+
+    result = engine.segment_with_sam(frame,dets_hsv)
+
+    print(f"FrameResult generado con éxito.")
+
 
 if __name__ == "__main__":
     test_segmentation()
