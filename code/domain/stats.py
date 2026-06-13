@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import List, Tuple, Literal
+from dataclasses import dataclass, field
+from typing import Dict
 
 @dataclass
 class Score:
@@ -18,6 +18,6 @@ class DistanceCm:
 
 @dataclass
 class Statistics:
+    score: Score
     possession_pct: PossessionPct
     distance_cm: Dict[str, float] = field(default_factory=dict)
-
