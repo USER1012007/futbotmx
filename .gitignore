@@ -5,6 +5,7 @@
 *.lock
 *.envrc
 *.png
+*.py[cod]
 
 .direnv/
 __pycache__/
