@@ -19,6 +19,10 @@ El dia de hoy desarrollamos y definimos la parte de las clases de los objetos qu
 
 > Emilio R. (USER1012007)
 
+Oficialmente terminamos las 12 notebooks del curso de thinkific ambos compañeros del equipo.
+
+> Darío G. (abclarry)
+
 ## 12-Jun-2026
 
 El dia de hoy empezamos a desarrollar el sistema de subscribe/publish para el proyecto, tambien a hacer uso del script de configuraciones que contiene variables globales, tambien el desarrollo de los script que son encargados de la parte de la entrada de datos, asimismo el script que estara a cargo de escribir y leer los datos de los frames en el .jsonl. Tambien se comenzo la parte de la vision por computadora para detectar a las entidades en el campo; sin embargo, esta parte se encuentra aun en desarrollo y analisis debido a que los actuales resultados no son los esperados y estamos en busca de mejores algoritmos y/o tecnicas que nos puedan ayudara mejorar la deteccion de las entidades en el campo, por el momento estamos detectando a las entidades mediante el algoritmo que usa los canales hsv para detectar los colores de los uniformes, sin embargo, esto no es suficiente para detectar a las entidades de manera precisa debido a que hay muchos factores que pueden afectar la deteccion como la iluminacion, el angulo de la camara, entre otros factores.
@@ -30,3 +34,7 @@ El dia de hoy empezamos a desarrollar el sistema de subscribe/publish para el pr
 El dia de hoy segui desarrollando la parte de segmentacion con el modelo, el dia de hoy testeamos y llegamos a la conclusion que para la parte de enmascaramiento de entidades usaremos unicamente a SAM3 y tracker para persistir ids; aparte de el desarrollo de este modulo, tambien se estuvo desarrollando la parte de generar la matriz de homografia, sin embargo, no se llego a un resultado conveniente ni correcto, asi que seguira en desarrollo y analisis para un mejor implemento de este modulo. 
 
 > Emilio R. (USER1012007)
+
+Refiné la vista a generarse desde `/code/visualization` aunque aún quedan detalles visuales de solapamiento por revisar y corregir así como escoger la visualización extra que se va a mostrar para cumplir con la convocatoria del proyecto.
+
+> Darío G. (abclarry)
