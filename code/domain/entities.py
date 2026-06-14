@@ -1,5 +1,6 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field 
 from typing import List, Tuple, Optional
+import numpy as np
 
 @dataclass
 class Point2D:
@@ -33,6 +34,7 @@ class FrameResult:
     frame_id: int
     robots: List[Robot]
     ball: Optional[Ball]
+    field_mask: Optional[np.ndarray] = None
 
     def to_dict(self):
         # Conversión recursiva para serialización y cast a float nativo
@@ -54,6 +56,7 @@ class FrameResult:
                 "tracker_id": self.ball.tracker_id,
                 "position_pixel": point_to_dict(self.ball.position_pixel),
                 "position_metric": point_to_dict(self.ball.position_metric)
-            } if self.ball else None
+            } if self.ball else None,
+            "field_mask_present": self.field_mask is not None
         }
 
