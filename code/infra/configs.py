@@ -15,3 +15,6 @@ class Config:
     CAMERA_RESOLUTION: tuple[int, int] = (1920, 1080)
     
     FPS_LIMIT: int = 30
+
+    FIELD_WIDTH_CM: float = 243.0
+    FIELD_HEIGHT_CM: float = 182.0
