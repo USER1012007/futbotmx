@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-import sys
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
 
 try:
     import cv2
@@ -13,19 +11,12 @@ except ImportError as exc:  # pragma: no cover - depends on runtime environment.
         "visualization.video_render requires opencv-python and numpy."
     ) from exc
 
-try:
+from visualization.tactical_map import TacticalMapRenderer
+
+if TYPE_CHECKING:
     from domain.entities import Ball, FrameResult, Point2D, Robot
     from domain.events import FrameEvents
     from infra.event_bus import EventBus
-    from visualization.tactical_map import TacticalMapRenderer
-except ImportError:
-    code_dir = Path(__file__).resolve().parents[1]
-    if str(code_dir) not in sys.path:
-        sys.path.insert(0, str(code_dir))
-    from domain.entities import Ball, FrameResult, Robot
-    from domain.events import FrameEvents
-    from infra.event_bus import EventBus
-    from visualization.tactical_map import TacticalMapRenderer
 
 
 Color = Tuple[int, int, int]
@@ -163,4 +154,4 @@ def render_video_overlay(
     return VideoOverlayRenderer(
         style=style,
         include_tactical_map=include_tactical_map,
-    ).render(frame, frame_result, frame_events)
+    ).render(frame, fram_result, frame_events)

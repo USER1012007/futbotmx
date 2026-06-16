@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional, Tuple
 
 try:
     import cv2
@@ -10,9 +10,11 @@ try:
 except ImportError as exc:  # pragma: no cover - depends on runtime environment.
     raise ImportError("visualization.dashboard requires opencv-python and numpy.") from exc
 
-from domain.events import FrameEvents
-from infra.event_bus import EventBus
 from domain.stats import PossessionPct, Score, Statistics
+
+if TYPE_CHECKING:
+    from domain.events import FrameEvents
+    from infra.event_bus import EventBus
 
 
 Color = Tuple[int, int, int]
@@ -42,6 +44,95 @@ EVENT_LABELS: Mapping[str, str] = {
     "panic": "Panic",
 }
 
+EVENT_PRIORITY = [
+    "gol_valido",
+    "gol_invalido",
+    "pase",
+    "colision",
+    "reposicion_balon",
+    "reposicion_robot",
+    "sacar_robot",
+    "fuera_de_cancha",
+    "robot_detenido",
+    "panic",
+]
+
+EVENT_COLORS: Mapping[str, Color] = {
+    "gol_valido": (80, 220, 80),
+    "gol_invalido": (40, 40, 255),
+    "pase": (210, 120, 255),
+    "colision": (40, 40, 255),
+    "posesion": (0, 220, 255),
+    "fuera_de_cancha": (0, 140, 255),
+    "robot_detenido": (150, 150, 150),
+    "reposicion_balon": (255, 180, 60),
+    "reposicion_robot": (255, 130, 40),
+    "sacar_robot": (40, 40, 200),
+    "panic": (255, 60, 255),
+}
+
+# --- Layout proportions (relative to canvas dimensions) ---
+_HEADER_H_RATIO = 0.16
+_POSSESSION_H_RATIO = 0.14
+_DISTANCE_H_RATIO = 0.20
+_EVENT_SUMMARY_H_RATIO = 0.18
+_MARGIN_RATIO = 0.025
+_GAP_RATIO = 0.015
+
+
+class Layout:
+    """Pre-computed pixel geometry for a given dashboard canvas size."""
+
+    def __init__(self, width: int, height: int) -> None:
+        self.width = width
+        self.height = height
+
+        self.margin = max(6, int(min(width, height) * _MARGIN_RATIO))
+        self.gap = max(4, int(height * _GAP_RATIO))
+        self.content_w = max(1, width - 2 * self.margin)
+
+        self.header_h = max(36, int(height * _HEADER_H_RATIO))
+        self.possession_h = max(36, int(height * _POSSESSION_H_RATIO))
+        self.distance_h = max(36, int(height * _DISTANCE_H_RATIO))
+        self.event_summary_h = max(36, int(height * _EVENT_SUMMARY_H_RATIO))
+
+        used = (
+            self.margin
+            + self.header_h + self.gap
+            + self.possession_h + self.gap
+            + self.distance_h + self.gap
+            + self.event_summary_h + self.gap
+            + self.margin
+        )
+        self.story_h = max(36, height - used)
+
+        self.header_y = self.margin
+        self.possession_y = self.header_y + self.header_h + self.gap
+        self.distance_y = self.possession_y + self.possession_h + self.gap
+        self.event_summary_y = self.distance_y + self.distance_h + self.gap
+        self.story_y = self.event_summary_y + self.event_summary_h + self.gap
+
+        # Backwards-compatible aliases for old _draw_event_counts callers.
+        self.events_y = self.event_summary_y
+        self.events_h = max(36, self.event_summary_h + self.gap + self.story_h)
+
+        # Typography scale tuned for a narrow side dashboard.
+        base_w = width / 520.0
+        base_h = height / 1080.0
+        base = max(0.85, min(1.35, (base_w * 0.75) + (base_h * 0.25)))
+
+        self.scale_xs = 0.55 * base
+        self.scale_sm = 0.70 * base
+        self.scale_md = 0.82 * base
+        self.scale_lg = 1.08 * base
+        self.scale_xl = 1.55 * base
+
+        self.thick_sm = 1
+        self.thick_md = max(1, min(2, int(round(1.4 * base))))
+        self.thick_lg = max(2, min(4, int(round(2.2 * base))))
+        self.bar_h = max(10, int(height * 0.028))
+        self.row_h_min = max(22, int(height * 0.045))
+
 
 class DashboardRenderer:
     """EventBus-aware wrapper for dashboard rendering."""
@@ -55,12 +146,14 @@ class DashboardRenderer:
         video_frame_event_type: str = "video_frame",
         output_event_type: str = "dashboard",
         default_match_time_seconds: float = 0.0,
+        dashboard_size: Optional[Tuple[int, int]] = None,
     ):
         self.output_event_type = output_event_type
         self.match_time_seconds = default_match_time_seconds
         self._event_bus = event_bus
         self._latest_stats: Optional[Statistics] = None
         self._latest_events: Optional[FrameEvents] = None
+        self._dashboard_size = dashboard_size
 
         if event_bus is not None:
             event_bus.subscribe(statistics_event_type, self.on_statistics)
@@ -78,12 +171,17 @@ class DashboardRenderer:
         if frame is None or self._latest_stats is None or self._latest_events is None:
             return
 
+        if self._dashboard_size is not None:
+            w, h = self._dashboard_size
+        else:
+            w, h = frame.shape[1], frame.shape[0]
+
         dashboard = self.render(
             self._latest_stats,
             self._latest_events,
             match_time_seconds,
-            frame.shape[1],
-            frame.shape[0],
+            w,
+            h,
         )
         if self._event_bus is not None:
             self._event_bus.publish(self.output_event_type, dashboard)
@@ -110,11 +208,18 @@ class DashboardRenderer:
     def _unpack_video_frame(self, payload: Any) -> Tuple[Optional["np.ndarray"], float]:
         if isinstance(payload, dict):
             frame = payload.get("frame")
-            match_time_seconds = payload.get("match_time_seconds", self.match_time_seconds)
+            match_time_seconds = payload.get(
+                "match_time_seconds",
+                self.match_time_seconds,
+            )
             self.match_time_seconds = float(match_time_seconds)
             return frame, self.match_time_seconds
         return payload, self.match_time_seconds
 
+
+# ---------------------------------------------------------------------------
+# Public rendering functions
+# ---------------------------------------------------------------------------
 
 def render(
     stats: Statistics,
@@ -126,32 +231,16 @@ def render(
     """Render a per-frame FutBotMX HUD dashboard as a BGR image."""
     if width <= 0 or height <= 0:
         return np.zeros((0, 0, 3), dtype=np.uint8)
+
     canvas = np.full((height, width, 3), BACKGROUND, dtype=np.uint8)
+    lo = Layout(width, height)
 
-    margin = max(12, min(width, height) // 32)
-    content_w = max(1, width - 2 * margin)
-    section_gap = max(10, height // 48)
+    _draw_header(canvas, lo, stats, match_time_seconds)
+    _draw_possession(canvas, lo, _get_possession(stats))
+    _draw_distance(canvas, lo, _get_distance(stats))
+    _draw_event_summary(canvas, lo, _count_events(events))
+    _draw_event_story(canvas, lo, events)
 
-    y = margin
-    _draw_header(canvas, stats, match_time_seconds, (margin, y), content_w)
-    y += max(58, height // 7) + section_gap
-
-    possession_h = max(54, height // 8)
-    _draw_possession(canvas, _get_possession(stats), (margin, y), content_w, possession_h)
-    y += possession_h + section_gap
-
-    distance_h = max(64, height // 7)
-    _draw_distance(canvas, _get_distance(stats), (margin, y), content_w, distance_h)
-    y += distance_h + section_gap
-
-    _draw_event_counts(
-        canvas,
-        _count_events(events),
-        (margin, y),
-        content_w,
-        max(1, height - y - margin),
-        compact=True,
-    )
     return canvas
 
 
@@ -164,12 +253,19 @@ def render_final_report(
     """Render and save a final FutBotMX report snapshot as PNG."""
     width, height = 1280, 720
     canvas = np.full((height, width, 3), BACKGROUND, dtype=np.uint8)
-    margin = 48
+    lo = Layout(width, height)
 
-    _draw_header(canvas, stats, match_time_seconds, (margin, margin), width - 2 * margin, title="FutBotMX - Reporte final")
-    _draw_possession(canvas, _get_possession(stats), (margin, 170), width - 2 * margin, 110)
-    _draw_distance(canvas, _get_distance(stats), (margin, 310), width - 2 * margin, 130)
-    _draw_event_counts(canvas, _count_events(events), (margin, 470), width - 2 * margin, 200, compact=False)
+    _draw_header(
+        canvas,
+        lo,
+        stats,
+        match_time_seconds,
+        title="FutBotMX - Reporte final",
+    )
+    _draw_possession(canvas, lo, _get_possession(stats))
+    _draw_distance(canvas, lo, _get_distance(stats))
+    _draw_event_summary(canvas, lo, _count_events(events))
+    _draw_event_story(canvas, lo, events)
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -184,127 +280,324 @@ def render_dashboard(
     height: int,
 ) -> "np.ndarray":
     """Render a dashboard using the class wrapper for standalone callers."""
-    return DashboardRenderer().render(stats, events, match_time_seconds, width, height)
+    return DashboardRenderer().render(
+        stats,
+        events,
+        match_time_seconds,
+        width,
+        height,
+    )
 
+
+# ---------------------------------------------------------------------------
+# Section drawers
+# ---------------------------------------------------------------------------
 
 def _draw_header(
     canvas: "np.ndarray",
+    lo: Layout,
     stats: Statistics,
     match_time_seconds: float,
-    origin: Tuple[int, int],
-    width: int,
     *,
     title: str = "FutBotMX",
 ) -> None:
-    x, y = origin
-    h = 92 if canvas.shape[0] >= 500 else 58
-    _panel(canvas, (x, y), width, h)
-    score = _get_score(stats)
+    x, y, w, h = lo.margin, lo.header_y, lo.content_w, lo.header_h
+    _panel(canvas, x, y, w, h)
 
-    title_scale = 0.85 if h > 70 else 0.55
-    score_scale = 1.45 if h > 70 else 0.82
-    _text(canvas, title, (x + 18, y + 30), title_scale, WHITE, 2)
-    _text(canvas, "ALLIES", (x + 18, y + h - 18), 0.5, ALLIES, 1)
-    _text(canvas, "RIVALS", (x + width - 105, y + h - 18), 0.5, RIVALS, 1)
+    score = _get_score(stats)
+    pad = max(8, lo.margin // 2)
+
+    title_scale = _fit_text_scale(title, max(80, int(w * 0.36)), lo.scale_sm, lo.thick_md)
+    title_y = y + max(22, h // 3)
+    _text(canvas, title, (x + pad, title_y), title_scale, WHITE, lo.thick_md)
+
+    label_y = y + h - max(6, h // 8)
+    _text(canvas, "ALLIES", (x + pad, label_y), lo.scale_xs, ALLIES, lo.thick_sm)
+
+    rivals_label = "RIVALS"
+    rivals_size = cv2.getTextSize(rivals_label, FONT, lo.scale_xs, lo.thick_sm)[0]
+    _text(
+        canvas,
+        rivals_label,
+        (x + w - rivals_size[0] - pad, label_y),
+        lo.scale_xs,
+        RIVALS,
+        lo.thick_sm,
+    )
 
     score_text = f"{score.allies}  -  {score.rivals}"
-    score_size = cv2.getTextSize(score_text, FONT, score_scale, 2)[0]
-    _text(canvas, score_text, (x + (width - score_size[0]) // 2, y + h // 2 + 14), score_scale, WHITE, 2)
+    score_scale = lo.scale_xl if h >= 80 else lo.scale_lg
+    score_scale = _fit_text_scale(score_text, int(w * 0.50), score_scale, lo.thick_lg)
+    score_size = cv2.getTextSize(score_text, FONT, score_scale, lo.thick_lg)[0]
+    score_x = x + (w - score_size[0]) // 2
+    score_y = y + (h + score_size[1]) // 2
+    score_y = min(score_y, y + h - max(4, h // 10))
+    _text(canvas, score_text, (score_x, score_y), score_scale, WHITE, lo.thick_lg)
 
     time_text = _format_time(match_time_seconds)
-    time_size = cv2.getTextSize(time_text, FONT, 0.7, 2)[0]
-    _text(canvas, time_text, (x + width - time_size[0] - 18, y + 32), 0.7, WHITE, 2)
+    time_scale = _fit_text_scale(time_text, max(60, int(w * 0.24)), lo.scale_md, lo.thick_md)
+    time_size = cv2.getTextSize(time_text, FONT, time_scale, lo.thick_md)[0]
+    time_x = x + w - time_size[0] - pad
+    time_y = y + max(22, h // 3)
+    _text(canvas, time_text, (time_x, time_y), time_scale, WHITE, lo.thick_md)
 
 
 def _draw_possession(
     canvas: "np.ndarray",
+    lo: Layout,
     possession: PossessionPct,
-    origin: Tuple[int, int],
-    width: int,
-    height: int,
 ) -> None:
-    x, y = origin
-    _panel(canvas, origin, width, height)
-    _text(canvas, "Posesion", (x + 16, y + 25), 0.55, WHITE, 1)
+    x, y, w, h = lo.margin, lo.possession_y, lo.content_w, lo.possession_h
+    _panel(canvas, x, y, w, h)
 
-    bar_x = x + 16
-    bar_y = y + height // 2
-    bar_w = max(1, width - 32)
-    bar_h = 16
+    pad = max(8, lo.margin // 2)
+    label_y = y + max(16, h // 4)
+    _text(canvas, "Posesion", (x + pad, label_y), lo.scale_sm, WHITE, lo.thick_md)
+
     allies_pct, rivals_pct = _normalize_pct(possession.allies, possession.rivals)
+
+    bar_x = x + pad
+    bar_w = max(1, w - 2 * pad)
+    bar_y = y + h // 2 - lo.bar_h // 2
     allies_w = int(round(bar_w * allies_pct / 100.0))
 
-    cv2.rectangle(canvas, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), PANEL_ALT, -1)
-    cv2.rectangle(canvas, (bar_x, bar_y), (bar_x + allies_w, bar_y + bar_h), ALLIES, -1)
-    cv2.rectangle(canvas, (bar_x + allies_w, bar_y), (bar_x + bar_w, bar_y + bar_h), RIVALS, -1)
+    cv2.rectangle(
+        canvas,
+        (bar_x, bar_y),
+        (bar_x + bar_w, bar_y + lo.bar_h),
+        PANEL_ALT,
+        -1,
+    )
+    if allies_w > 0:
+        cv2.rectangle(
+            canvas,
+            (bar_x, bar_y),
+            (bar_x + allies_w, bar_y + lo.bar_h),
+            ALLIES,
+            -1,
+        )
+    if allies_w < bar_w:
+        cv2.rectangle(
+            canvas,
+            (bar_x + allies_w, bar_y),
+            (bar_x + bar_w, bar_y + lo.bar_h),
+            RIVALS,
+            -1,
+        )
 
-    _text(canvas, f"Allies {allies_pct:.0f}%", (bar_x, y + height - 14), 0.48, ALLIES, 1)
+    pct_y = y + h - max(4, h // 8)
+    _text(canvas, f"Allies {allies_pct:.0f}%", (bar_x, pct_y), lo.scale_xs, ALLIES, lo.thick_sm)
+
     rival_text = f"Rivals {rivals_pct:.0f}%"
-    size = cv2.getTextSize(rival_text, FONT, 0.48, 1)[0]
-    _text(canvas, rival_text, (bar_x + bar_w - size[0], y + height - 14), 0.48, RIVALS, 1)
+    rival_size = cv2.getTextSize(rival_text, FONT, lo.scale_xs, lo.thick_sm)[0]
+    _text(
+        canvas,
+        rival_text,
+        (bar_x + bar_w - rival_size[0], pct_y),
+        lo.scale_xs,
+        RIVALS,
+        lo.thick_sm,
+    )
 
 
 def _draw_distance(
     canvas: "np.ndarray",
+    lo: Layout,
     distance_cm: Mapping[str, float],
-    origin: Tuple[int, int],
-    width: int,
-    height: int,
 ) -> None:
-    x, y = origin
-    _panel(canvas, origin, width, height)
-    _text(canvas, "Distancia recorrida", (x + 16, y + 25), 0.55, WHITE, 1)
+    x, y, w, h = lo.margin, lo.distance_y, lo.content_w, lo.distance_h
+    _panel(canvas, x, y, w, h)
+
+    pad = max(8, lo.margin // 2)
+    label_y = y + max(16, h // 5)
+    _text(canvas, "Distancia recorrida", (x + pad, label_y), lo.scale_sm, WHITE, lo.thick_md)
 
     if not distance_cm:
-        _text(canvas, "Sin datos", (x + 16, y + height // 2 + 8), 0.55, MUTED, 1)
+        _text(canvas, "Sin datos", (x + pad, y + h // 2 + 6), lo.scale_sm, MUTED, 1)
         return
 
-    items = sorted(distance_cm.items(), key=lambda item: item[0])[:6]
-    max_distance = max(max(distance_cm.values()), 1.0)
-    row_h = max(18, (height - 40) // max(len(items), 1))
+    items = sorted(distance_cm.items())[:6]
+    max_distance = max(max(v for _, v in items), 1.0)
+
+    header_space = max(30, h // 4)
+    available_h = h - header_space - pad
+    row_h = max(lo.row_h_min, available_h // max(len(items), 1))
+
+    label_col_w = max(78, int(w * 0.25))
+    value_col_w = max(62, int(w * 0.14))
+    bar_x = x + pad + label_col_w
+    bar_w = max(1, w - 2 * pad - label_col_w - value_col_w - 4)
 
     for index, (label, value) in enumerate(items):
-        row_y = y + 48 + index * row_h
-        bar_x = x + 120
-        bar_w = max(1, width - 220)
+        row_y = y + header_space + index * row_h
+        if row_y + row_h > y + h - 2:
+            break
+
+        bar_cy = row_y + row_h // 2
+        bar_top = bar_cy - lo.bar_h // 2
         fill_w = int(round(bar_w * min(value / max_distance, 1.0)))
         color = ALLIES if "all" in label.lower() or "azul" in label.lower() else ACCENT
-        _text(canvas, label, (x + 16, row_y + 5), 0.42, WHITE, 1)
-        cv2.rectangle(canvas, (bar_x, row_y - 9), (bar_x + bar_w, row_y + 5), PANEL_ALT, -1)
-        cv2.rectangle(canvas, (bar_x, row_y - 9), (bar_x + fill_w, row_y + 5), color, -1)
-        _text(canvas, f"{value:.0f} cm", (bar_x + bar_w + 12, row_y + 5), 0.42, MUTED, 1)
+
+        label_text = _truncate_text(label, label_col_w - 8, lo.scale_xs)
+        _text(canvas, label_text, (x + pad, bar_cy + 5), lo.scale_xs, WHITE, lo.thick_sm)
+
+        cv2.rectangle(
+            canvas,
+            (bar_x, bar_top),
+            (bar_x + bar_w, bar_top + lo.bar_h),
+            PANEL_ALT,
+            -1,
+        )
+        if fill_w > 0:
+            cv2.rectangle(
+                canvas,
+                (bar_x, bar_top),
+                (bar_x + fill_w, bar_top + lo.bar_h),
+                color,
+                -1,
+            )
+
+        val_text = f"{value:.0f}cm"
+        value_scale = _fit_text_scale(val_text, value_col_w - 6, lo.scale_xs, lo.thick_sm)
+        _text(canvas, val_text, (bar_x + bar_w + 6, bar_cy + 5), value_scale, MUTED, lo.thick_sm)
+
+
+def _draw_event_summary(
+    canvas: "np.ndarray",
+    lo: Layout,
+    counts: Mapping[str, int],
+) -> None:
+    x, y, w, h = lo.margin, lo.event_summary_y, lo.content_w, lo.event_summary_h
+    _panel(canvas, x, y, w, h)
+
+    pad = max(8, lo.margin // 2)
+    _text(canvas, "Eventos", (x + pad, y + max(18, h // 5)), lo.scale_sm, WHITE, lo.thick_md)
+
+    active_keys = [key for key in EVENT_PRIORITY if counts.get(key, 0) > 0]
+    if not active_keys:
+        active_keys = ["gol_valido", "pase", "colision", "panic"]
+
+    active_keys = active_keys[:6]
+
+    cols = 3
+    rows = 2
+    cell_w = max(1, w // cols)
+    start_y = y + max(38, h // 3)
+    cell_h = max(24, (h - (start_y - y) - pad) // rows)
+
+    for index, key in enumerate(active_keys):
+        row = index // cols
+        col = index % cols
+
+        cx = x + col * cell_w + pad
+        cy = start_y + row * cell_h
+
+        label = EVENT_LABELS.get(key, key)
+        value = counts.get(key, 0)
+
+        label = _truncate_text(label, cell_w - 2 * pad, lo.scale_xs)
+        _text(canvas, label, (cx, cy), lo.scale_xs, MUTED, lo.thick_sm)
+        _text(canvas, str(value), (cx, cy + max(18, cell_h // 2)), lo.scale_md, WHITE, lo.thick_md)
+
+
+def _draw_event_story(
+    canvas: "np.ndarray",
+    lo: Layout,
+    events: FrameEvents,
+) -> None:
+    x, y, w, h = lo.margin, lo.story_y, lo.content_w, lo.story_h
+    _panel(canvas, x, y, w, h)
+
+    pad = max(8, lo.margin // 2)
+    _text(
+        canvas,
+        "Historia del partido",
+        (x + pad, y + max(18, h // 7)),
+        lo.scale_sm,
+        WHITE,
+        lo.thick_md,
+    )
+
+    recent_events = list(getattr(events, "eventos", []))[-6:]
+    if not recent_events:
+        _text(canvas, "Sin eventos recientes", (x + pad, y + h // 2), lo.scale_xs, MUTED, lo.thick_sm)
+        return
+
+    row_y = y + max(42, h // 4)
+    line_h = max(22, int(h * 0.12))
+
+    for event in recent_events:
+        if row_y > y + h - pad:
+            break
+
+        text = _event_to_short_text(event)
+        text = _truncate_text(text, w - 2 * pad - 18, lo.scale_xs)
+
+        color = _event_color(event)
+        cv2.circle(canvas, (x + pad + 5, row_y - 5), 4, color, -1, cv2.LINE_AA)
+        _text(canvas, text, (x + pad + 18, row_y), lo.scale_xs, WHITE, lo.thick_sm)
+
+        row_y += line_h
 
 
 def _draw_event_counts(
     canvas: "np.ndarray",
+    lo: Layout,
     counts: Mapping[str, int],
-    origin: Tuple[int, int],
-    width: int,
-    height: int,
     *,
     compact: bool,
 ) -> None:
-    x, y = origin
-    _panel(canvas, origin, width, height)
-    _text(canvas, "Eventos", (x + 16, y + 25), 0.55, WHITE, 1)
+    """Legacy event-count drawer kept for compatibility.
+
+    New dashboard frames should prefer _draw_event_summary + _draw_event_story.
+    """
+    x, y, w, h = lo.margin, lo.events_y, lo.content_w, lo.events_h
+    if h <= 0:
+        return
+
+    _panel(canvas, x, y, w, h)
+
+    pad = max(8, lo.margin // 2)
+    label_y = y + max(16, h // 4)
+    _text(canvas, "Eventos", (x + pad, label_y), lo.scale_sm, WHITE, lo.thick_md)
 
     primary = ["gol_valido", "pase", "colision"]
-    rest = [key for key in EVENT_LABELS if key not in primary and counts.get(key, 0) > 0]
+    rest = [k for k in EVENT_LABELS if k not in primary and counts.get(k, 0) > 0]
     keys = primary + ([] if compact else rest)
-    if compact:
-        keys = keys[:3]
 
-    col_w = max(1, width // max(len(keys), 1))
+    if not keys:
+        return
+
+    max_cols = max(1, min(len(keys), w // max(50, int(w * 0.12))))
+    keys = keys[:max_cols]
+
+    col_w = max(1, w // max_cols)
+    value_y = y + h - max(14, h // 7)
+    ev_label_y = y + h - max(34, h // 3)
+    value_scale = lo.scale_lg if not compact else lo.scale_md
+
     for index, key in enumerate(keys):
         cx = x + index * col_w
         label = EVENT_LABELS.get(key, key)
         value = counts.get(key, 0)
-        _text(canvas, label, (cx + 16, y + 55), 0.45, MUTED, 1)
-        _text(canvas, str(value), (cx + 16, y + min(height - 16, 95)), 1.0 if not compact else 0.78, WHITE, 2)
 
+        label = _truncate_text(label, col_w - pad, lo.scale_xs)
+        label_scale = _fit_text_scale(label, col_w - 2 * pad, lo.scale_xs, lo.thick_sm)
+        _text(canvas, label, (cx + pad, ev_label_y), label_scale, MUTED, lo.thick_sm)
+        _text(canvas, str(value), (cx + pad, value_y), value_scale, WHITE, lo.thick_md)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _count_events(events: FrameEvents) -> Dict[str, int]:
-    return dict(Counter(getattr(event, "type", event.__class__.__name__) for event in events.eventos))
+    return dict(
+        Counter(
+            getattr(event, "type", event.__class__.__name__)
+            for event in getattr(events, "eventos", [])
+        )
+    )
 
 
 def _get_score(stats: Statistics) -> Score:
@@ -323,23 +616,170 @@ def _normalize_pct(allies: float, rivals: float) -> Tuple[float, float]:
     total = allies + rivals
     if total <= 0:
         return 50.0, 50.0
-    if total <= 1.0:
-        return allies * 100.0 / total, rivals * 100.0 / total
-    return allies * 100.0 / total, rivals * 100.0 / total
+
+    # Works both for fractions (0.58 + 0.42) and percentages (58 + 42).
+    scale = 100.0 / total
+    return allies * scale, rivals * scale
 
 
 def _format_time(seconds: float) -> str:
-    safe_seconds = max(0, int(round(seconds)))
-    minutes, secs = divmod(safe_seconds, 60)
+    safe = max(0, int(round(seconds)))
+    minutes, secs = divmod(safe, 60)
     return f"{minutes:02d}:{secs:02d}"
 
 
-def _panel(canvas: "np.ndarray", origin: Tuple[int, int], width: int, height: int) -> None:
-    x, y = origin
+def _event_to_short_text(event: object) -> str:
+    event_type = getattr(event, "type", event.__class__.__name__)
+    frame = getattr(event, "frame", None)
+
+    prefix = f"F{frame} - " if frame is not None else ""
+
+    if event_type == "gol_valido":
+        team = getattr(event, "team", "?")
+        return f"{prefix}Gol valido {team}"
+
+    if event_type == "gol_invalido":
+        team = getattr(event, "team", "?")
+        reason = getattr(event, "reason", "")
+        return f"{prefix}Gol invalido {team}: {reason}"
+
+    if event_type == "pase":
+        from_id = getattr(event, "from_robot_id", getattr(event, "from_id", "?"))
+        to_id = getattr(event, "to_robot_id", getattr(event, "to", "?"))
+        return f"{prefix}Pase {from_id} -> {to_id}"
+
+    if event_type == "colision":
+        robots = getattr(event, "robots", [])
+        ids = "/".join(getattr(robot, "id", str(robot)) for robot in robots)
+        return f"{prefix}Colision {ids}"
+
+    if event_type == "posesion":
+        robot = getattr(event, "robot", None)
+        rid = getattr(robot, "id", "?")
+        return f"{prefix}{rid} tomo posesion"
+
+    if event_type == "fuera_de_cancha":
+        object_type = getattr(event, "object_type", getattr(event, "object", "objeto"))
+        return f"{prefix}{object_type} fuera de cancha"
+
+    if event_type == "robot_detenido":
+        robot = getattr(event, "robot", None)
+        rid = getattr(robot, "id", "?")
+        return f"{prefix}Robot {rid} detenido"
+
+    if event_type == "reposicion_balon":
+        reason = getattr(event, "reason", "")
+        return f"{prefix}Reposicion balon: {reason}"
+
+    if event_type == "reposicion_robot":
+        robot = getattr(event, "robot", None)
+        rid = getattr(robot, "id", "?")
+        return f"{prefix}Reposicion robot {rid}"
+
+    if event_type == "sacar_robot":
+        robot = getattr(event, "robot", None)
+        rid = getattr(robot, "id", "?")
+        reason = getattr(event, "reason", "")
+        return f"{prefix}Robot {rid} retirado: {reason}"
+
+    if event_type == "panic":
+        reason = getattr(event, "reason", "")
+        return f"{prefix}Panic: {reason}"
+
+    return f"{prefix}{EVENT_LABELS.get(event_type, event_type)}"
+
+
+def _event_color(event: object) -> Color:
+    event_type = getattr(event, "type", event.__class__.__name__)
+    return EVENT_COLORS.get(event_type, ACCENT)
+
+
+def _fit_text_scale(
+    text: str,
+    max_px: int,
+    scale: float,
+    thickness: int,
+    *,
+    min_scale: float = 0.35,
+) -> float:
+    """Return a font scale that fits *text* into *max_px* without distorting it."""
+    if not text or max_px <= 0:
+        return scale
+
+    current = scale
+    while current > min_scale:
+        text_w, _ = cv2.getTextSize(text, FONT, current, thickness)[0]
+        if text_w <= max_px:
+            return current
+        current *= 0.92
+
+    return min_scale
+
+
+def _truncate_text(text: str, max_px: int, scale: float) -> str:
+    """Truncate *text* so its rendered width stays within *max_px*."""
+    if not text:
+        return text
+
+    text_w, _ = cv2.getTextSize(text, FONT, scale, 1)[0]
+    if text_w <= max_px:
+        return text
+
+    suffix = "..."
+    lo_i, hi_i = 0, len(text)
+
+    while lo_i < hi_i:
+        mid = (lo_i + hi_i + 1) // 2
+        probe = text[:mid] + suffix
+        probe_w, _ = cv2.getTextSize(probe, FONT, scale, 1)[0]
+
+        if probe_w <= max_px:
+            lo_i = mid
+        else:
+            hi_i = mid - 1
+
+    return text[:lo_i] + suffix
+
+
+def _panel(canvas: "np.ndarray", x: int, y: int, width: int, height: int) -> None:
     overlay = canvas.copy()
-    cv2.rectangle(overlay, (x, y), (x + width, y + height), PANEL, -1)
+    radius = max(6, min(14, min(width, height) // 10))
+    _rounded_rect(overlay, x, y, width, height, radius, PANEL, -1)
     cv2.addWeighted(overlay, 0.78, canvas, 0.22, 0, canvas)
-    cv2.rectangle(canvas, (x, y), (x + width, y + height), (58, 68, 82), 1)
+    _rounded_rect(canvas, x, y, width, height, radius, (58, 68, 82), 1)
+
+
+def _rounded_rect(
+    canvas: "np.ndarray",
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    radius: int,
+    color: Color,
+    thickness: int,
+) -> None:
+    x2 = x + width
+    y2 = y + height
+    radius = max(1, min(radius, width // 2, height // 2))
+
+    if thickness < 0:
+        cv2.rectangle(canvas, (x + radius, y), (x2 - radius, y2), color, thickness)
+        cv2.rectangle(canvas, (x, y + radius), (x2, y2 - radius), color, thickness)
+        cv2.circle(canvas, (x + radius, y + radius), radius, color, thickness, cv2.LINE_AA)
+        cv2.circle(canvas, (x2 - radius, y + radius), radius, color, thickness, cv2.LINE_AA)
+        cv2.circle(canvas, (x2 - radius, y2 - radius), radius, color, thickness, cv2.LINE_AA)
+        cv2.circle(canvas, (x + radius, y2 - radius), radius, color, thickness, cv2.LINE_AA)
+        return
+
+    cv2.line(canvas, (x + radius, y), (x2 - radius, y), color, thickness, cv2.LINE_AA)
+    cv2.line(canvas, (x + radius, y2), (x2 - radius, y2), color, thickness, cv2.LINE_AA)
+    cv2.line(canvas, (x, y + radius), (x, y2 - radius), color, thickness, cv2.LINE_AA)
+    cv2.line(canvas, (x2, y + radius), (x2, y2 - radius), color, thickness, cv2.LINE_AA)
+    cv2.ellipse(canvas, (x + radius, y + radius), (radius, radius), 180, 0, 90, color, thickness, cv2.LINE_AA)
+    cv2.ellipse(canvas, (x2 - radius, y + radius), (radius, radius), 270, 0, 90, color, thickness, cv2.LINE_AA)
+    cv2.ellipse(canvas, (x2 - radius, y2 - radius), (radius, radius), 0, 0, 90, color, thickness, cv2.LINE_AA)
+    cv2.ellipse(canvas, (x + radius, y2 - radius), (radius, radius), 90, 0, 90, color, thickness, cv2.LINE_AA)
 
 
 def _text(

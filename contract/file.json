@@ -1,94 +1,66 @@
 {
-    "frame": 42,
-    "timestamp": 1.4,
-    "duracion_total_s": 180.0,  
-
-    "robots_aliados": [
-        {"id": "A1", "pos": ["x1", "y1"], "tracker_id": 3, "angulo_deg": 45.0},
-        {"id": "A2", "pos": ["x2", "y2"], "tracker_id": 7, "angulo_deg": 45.0}
+  "frame_id": 42,
+  "data": {
+    "frame_id": 42,
+    "timestamp_s": 1.4,
+    "robots": [
+      {
+        "id": "A1",
+        "team_id": "allies",
+        "tracker_id": 3,
+        "position_pixel": { "x": 120.0, "y": 340.0, "is_metric": false, "unit": "px" },
+        "position_metric": { "x": 45.0, "y": 120.0, "is_metric": true, "unit": "cm" },
+        "speed_cm_s": 12.5,
+        "angle": 45.0,
+        "is_penalized": false,
+        "penalization_frames_left": 0
+      },
+      {
+        "id": "A2",
+        "team_id": "allies",
+        "tracker_id": 7,
+        "position_pixel": { "x": 200.0, "y": 310.0, "is_metric": false, "unit": "px" },
+        "position_metric": { "x": 80.0, "y": 110.0, "is_metric": true, "unit": "cm" },
+        "speed_cm_s": 0.0,
+        "angle": 45.0,
+        "is_penalized": false,
+        "penalization_frames_left": 0
+      },
+      {
+        "id": "R1",
+        "team_id": "rivals",
+        "tracker_id": 12,
+        "position_pixel": { "x": 400.0, "y": 280.0, "is_metric": false, "unit": "px" },
+        "position_metric": { "x": 160.0, "y": 100.0, "is_metric": true, "unit": "cm" },
+        "speed_cm_s": 8.0,
+        "angle": 45.0,
+        "is_penalized": false,
+        "penalization_frames_left": 0
+      }
     ],
-
-    "robots_rivales": [
-        {"id": "R1", "pos": ["x3", "y3"], "tracker_id": 12, "angulo_deg": 45.0},
-        {"id": "R2", "pos": ["x4", "y4"], "tracker_id": 15, "angulo_deg": 45.0}
-    ],
-
-    "balon": {
-        "pos": ["x5", "y5"],        
-        "tracker_id": 1,        
-        "velocidad_cm_s": 45.2,
-        "vector_direccion": ["dx", "dy"]
+    "ball": {
+      "id": "ball",
+      "tracker_id": 1,
+      "position_pixel": { "x": 320.0, "y": 300.0, "is_metric": false, "unit": "px" },
+      "position_metric": { "x": 128.0, "y": 107.0, "is_metric": true, "unit": "cm" },
+      "speed_cm_s": 45.2,
+      "direction_vector": [0.87, 0.5]
     },
-
-    "marcador": {
-        "aliados": 1,
-        "rivales": 0
-    },
-
-    "estadisticas": {
-        "posesion_pct": {"aliados": 62, "rivales": 38},
-        "distancia_cm": {"A1": 340.2, "A2": 289.7, "R1": 410.1, "R2": 95.3}
-    },
-
-    "eventos": [
-        {
-            "type": "colision",
-            "robots": ["A1", "R1"],     
-            "position": ["x", "y"]                
-        },
-        {
-            "type": "posesion",
-            "robot": "A2",              
-            "distance_cm": 8.3          
-        },
-        {
-            "type": "pase",
-            "from_id": "A1",
-            "to": "A2",                  
-            "distance_cm": 35.0
-        },
-        {
-            "type": "fuera_de_cancha",
-            "object": "balon",          
-            "last_position": ["x", "y"]        
-        },
-        {
-            "type": "robot_detenido",
-            "robot": "R2",
-            "frames_duration": 45        
-        },
-        {
-            "type": "reposicion_balon",
-            "reason": "falta_de_progreso",
-            "position": ["x", "y"]
-        },
-        {
-            "type": "reposicion_robot",
-            "robot": "A1",
-            "target_position": ["x", "y"]
-        },
-        {
-            "type": "gol_valido",
-            "team": "aliados",
-            "velocity_cm_s": 120.5,
-            "position": ["x", "y"]
-        },
-        {
-            "type": "gol_invalido",
-            "team": "aliados",
-            "reason": "robot_en_area_penalti",
-            "infracting_robot": "A2"
-        },
-        {
-            "type": "sacar_robot",
-            "robot": "R1",
-            "reason": "ingreso_area_penalti",
-            "frames_penalization": 30
-        },
-        {
-            "type": "panic",
-            "reason": "ruido_visual",
-            "frames_duration": 15
-        }
+    "repositions": [
+      {
+        "type": "reposicion_balon",
+        "object_type": "balon",
+        "reason": "falta_de_progreso",
+        "from_position_cm": [128.0, 107.0],
+        "to_position_cm": [150.0, 100.0]
+      },
+      {
+        "type": "reposicion_robot",
+        "object_type": "robot",
+        "robot_id": "A1",
+        "from_position_cm": [45.0, 120.0],
+        "target_position_cm": [60.0, 100.0]
+      }
     ]
+  }
 }
