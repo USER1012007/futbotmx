@@ -106,6 +106,7 @@ class FrameResult:
     ball: Optional[Ball]
     timestamp_s: Optional[float] = None
     field_mask: Optional[np.ndarray] = None
+    repositions: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -114,6 +115,7 @@ class FrameResult:
             "robots": [robot.to_dict() for robot in self.robots],
             "ball": self.ball.to_dict() if self.ball else None,
             "field_mask_present": self.field_mask is not None,
+            "repositions": list(self.repositions),
         }
 
 
