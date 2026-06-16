@@ -1,0 +1,15 @@
+name: futbotmx
+channels:
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.10
+  - numpy
+  - opencv
+  - pytorch
+  - torchvision
+  - pip
+  - pip:
+    - supervision
+    - ultralytics
+    - byte-track
