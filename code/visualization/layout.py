@@ -23,7 +23,7 @@ def compose_final_frame(
     video_overlay: "np.ndarray",
     tactical_map: "np.ndarray",
     dashboard: "np.ndarray",
-    *,
+    *
     output_size: tuple[int, int] | None = None,
     left_width_ratio: float = LEFT_WIDTH_RATIO,
     video_preview_height_ratio: float = VIDEO_PREVIEW_HEIGHT_RATIO,
