@@ -1,3 +1,10 @@
+"""Mapa tactico de FutBotMX.
+
+Que hace: dibuja cancha, robots, balon, trails y marcadores de eventos.
+Flujo: recibe FrameResult y FrameEvents, actualiza trails, proyecta coordenadas
+metricas a pixeles y devuelve un frame BGR listo para componer.
+"""
+
 from __future__ import annotations
 
 from collections import defaultdict, deque
@@ -19,8 +26,43 @@ if TYPE_CHECKING:
 Color = Tuple[int, int, int]
 
 
+EVENT_LABELS: Dict[str, str] = {
+    "gol_valido": "gol valido",
+    "gol_invalido": "gol invalido",
+    "pase": "pase",
+    "colision": "colision",
+    "posesion": "posesion",
+    "fuera_de_cancha": "fuera",
+    "robot_detenido": "detenido",
+    "reposicion_balon": "rep. balon",
+    "reposicion_robot": "rep. robot",
+    "sacar_robot": "sacar robot",
+    "panic": "panic",
+}
+
+EVENT_COLORS: Dict[str, Color] = {
+    "gol_valido": (80, 220, 80),
+    "gol_invalido": (40, 40, 255),
+    "pase": (210, 120, 255),
+    "colision": (40, 40, 255),
+    "posesion": (0, 220, 255),
+    "fuera_de_cancha": (0, 140, 255),
+    "robot_detenido": (150, 150, 150),
+    "reposicion_balon": (255, 180, 60),
+    "reposicion_robot": (255, 130, 40),
+    "sacar_robot": (40, 40, 200),
+    "panic": (255, 60, 255),
+}
+
+
 @dataclass(frozen=True)
 class FieldGeometry:
+    """Medidas fisicas de la cancha en centimetros.
+
+    Define dimensiones externas, lineas internas, areas y porterias.
+    Expone propiedades derivadas para centro y rectangulo interior.
+    Se usa como base para convertir centimetros a pixeles.
+    """
     # Medidas físicas reales en cm
     outer_width_cm: float = 243.0
     outer_height_cm: float = 182.0
@@ -60,6 +102,12 @@ class FieldGeometry:
 
 @dataclass(frozen=True)
 class FieldStyle:
+    """Estilo visual y escalas del mapa tactico.
+
+    Agrupa colores, tamaños, grosores y parametros de eventos.
+    Mantiene configurable el render sin cambiar la logica de dibujo.
+    Sus valores se escalan segun el tamano de salida.
+    """
     geometry: FieldGeometry = FieldGeometry()
 
     # Canvas de salida
@@ -117,6 +165,12 @@ class FieldStyle:
 
 
 class TacticalMapRenderer:
+    """Renderer del mapa tactico con soporte opcional de EventBus.
+
+    Escucha frames y eventos, mantiene trails por robot y eventos activos.
+    Dibuja cancha, entidades y overlays de eventos por frame.
+    Publica el mapa renderizado si esta conectado al bus.
+    """
     def __init__(
         self,
         event_bus: Optional[EventBus] = None,
@@ -407,14 +461,13 @@ class TacticalMapRenderer:
 
         y = self.style.margin_px + self.style.header_h_px + self._px(14)
         for label in labels:
-            _color = (240, 240, 240)
             cv2.putText(
                 canvas,
                 label,
                 (self.style.margin_px, y),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 self._ui_scale(self.style.event_label_scale),
-                _color,
+                self.style.text_bgr,
                 1,
                 cv2.LINE_AA,
             )
@@ -530,40 +583,11 @@ class TacticalMapRenderer:
 
     def _event_label(self, event: object) -> str:
         event_type = getattr(event, "type", event.__class__.__name__)
-
-        labels = {
-            "gol_valido": "gol valido",
-            "gol_invalido": "gol invalido",
-            "pase": "pase",
-            "colision": "colision",
-            "posesion": "posesion",
-            "fuera_de_cancha": "fuera",
-            "robot_detenido": "detenido",
-            "reposicion_balon": "rep. balon",
-            "reposicion_robot": "rep. robot",
-            "sacar_robot": "sacar robot",
-            "panic": "panic",
-        }
-
-        return labels.get(event_type, event_type)
+        return EVENT_LABELS.get(event_type, event_type)
 
 
     def _event_color(self, event_type: str) -> Color:
-        colors = {
-            "gol_valido": (80, 220, 80),
-            "gol_invalido": (40, 40, 255),
-            "pase": (210, 120, 255),
-            "colision": (40, 40, 255),
-            "posesion": (0, 220, 255),
-            "fuera_de_cancha": (0, 140, 255),
-            "robot_detenido": (150, 150, 150),
-            "reposicion_balon": (255, 180, 60),
-            "reposicion_robot": (255, 130, 40),
-            "sacar_robot": (40, 40, 200),
-            "panic": (255, 60, 255),
-        }
-
-        return colors.get(event_type, self.style.event_bgr)
+        return EVENT_COLORS.get(event_type, self.style.event_bgr)
 
     def _to_canvas_point(self, x_cm: float, y_cm: float) -> Tuple[int, int]:
         x0, y0 = getattr(self, "_field_origin_px", (self.style.margin_px, self.style.margin_px + self.style.header_h_px))

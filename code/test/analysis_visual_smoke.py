@@ -60,7 +60,7 @@ def main() -> None:
     EventDetector(bus)
     StatsEngine(bus)
     TacticalMapRenderer(bus)
-    VideoOverlayRenderer(bus, include_tactical_map=False)
+    VideoOverlayRenderer(bus)
     DashboardRenderer(bus)
 
     frames = _build_frame_results()

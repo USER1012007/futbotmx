@@ -1,3 +1,10 @@
+"""Composicion final de visualizacion.
+
+Que hace: une video overlay, tactical map y dashboard en un solo frame BGR.
+Flujo: calcula columnas/alturas, redimensiona cada pieza con letterbox y apila
+video+mapa a la izquierda con dashboard a la derecha.
+"""
+
 from __future__ import annotations
 
 try:

@@ -544,7 +544,6 @@ def render_mock_frame(
         raw_video,
         frame_result,
         frame_events,
-        include_tactical_map=False,
     )
 
     tactical_map = tactical_renderer.render(frame_result, frame_events)

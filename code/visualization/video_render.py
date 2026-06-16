@@ -1,3 +1,10 @@
+"""Overlay de video de FutBotMX.
+
+Que hace: dibuja robots, balon, eventos recientes y frame_id sobre el video.
+Flujo: recibe frame crudo + FrameResult + FrameEvents, pinta anotaciones en pixeles
+y publica/devuelve el video overlay sin componer otras vistas.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -5,13 +12,10 @@ from typing import TYPE_CHECKING, Optional, Tuple
 
 try:
     import cv2
-    import numpy as np
 except ImportError as exc:  # pragma: no cover - depends on runtime environment.
     raise ImportError(
         "visualization.video_render requires opencv-python and numpy."
     ) from exc
-
-from visualization.tactical_map import TacticalMapRenderer
 
 if TYPE_CHECKING:
     from domain.entities import Ball, FrameResult, Point2D, Robot
@@ -24,6 +28,13 @@ Color = Tuple[int, int, int]
 
 @dataclass(frozen=True)
 class OverlayStyle:
+    """Estilo del overlay sobre video.
+
+    Agrupa colores y radios para robots y balon.
+    Mantiene el render configurable sin tocar la logica.
+    Usa coordenadas en pixeles del frame original.
+    """
+
     ally_bgr: Color = (216, 180, 0)
     rival_bgr: Color = (60, 35, 239)
     unknown_bgr: Color = (230, 230, 230)
@@ -35,7 +46,12 @@ class OverlayStyle:
 
 
 class VideoOverlayRenderer:
-    """Draws existing FrameResult and FrameEvents data over video frames."""
+    """Renderer de anotaciones sobre frames de video.
+
+    Guarda el ultimo FrameResult y FrameEvents si usa EventBus.
+    Dibuja entidades desde position_pixel.
+    Publica el overlay final en el evento configurado.
+    """
 
     def __init__(
         self,
@@ -46,15 +62,12 @@ class VideoOverlayRenderer:
         game_event_type: str = "frame_events",
         video_frame_event_type: str = "video_frame",
         output_event_type: str = "video_overlay",
-        include_tactical_map: bool = False,
     ):
         self.style = style
         self.output_event_type = output_event_type
-        self.include_tactical_map = include_tactical_map
         self._event_bus = event_bus
         self._latest_frame_result: Optional[FrameResult] = None
         self._latest_frame_events: Optional[FrameEvents] = None
-        self._tactical_renderer = TacticalMapRenderer() if include_tactical_map else None
 
         if event_bus is not None:
             event_bus.subscribe(frame_event_type, self.on_frame_result)
@@ -99,9 +112,6 @@ class VideoOverlayRenderer:
             cv2.LINE_AA,
         )
 
-        if self._tactical_renderer is not None:
-            tactical = self._tactical_renderer.render(frame_result, frame_events)
-            output = self._stack_side_by_side(output, tactical)
         return output
 
     def _draw_robot(self, frame: "np.ndarray", robot: Robot) -> None:
@@ -124,12 +134,6 @@ class VideoOverlayRenderer:
             cv2.putText(frame, str(label), (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.style.event_bgr, 1, cv2.LINE_AA)
             y += 20
 
-    def _stack_side_by_side(self, frame: "np.ndarray", tactical: "np.ndarray") -> "np.ndarray":
-        target_h = frame.shape[0]
-        tactical_w = max(1, int(tactical.shape[1] * (target_h / tactical.shape[0])))
-        tactical = cv2.resize(tactical, (tactical_w, target_h), interpolation=cv2.INTER_AREA)
-        return np.hstack([frame, tactical])
-
     def _team_color(self, team_id: str) -> Color:
         normalized = team_id.lower()
         if normalized in {"ally", "allies", "azul", "blue"}:
@@ -149,9 +153,5 @@ def render_video_overlay(
     frame_events: Optional[FrameEvents] = None,
     *,
     style: OverlayStyle = OverlayStyle(),
-    include_tactical_map: bool = False,
 ) -> "np.ndarray":
-    return VideoOverlayRenderer(
-        style=style,
-        include_tactical_map=include_tactical_map,
-    ).render(frame, fram_result, frame_events)
+    return VideoOverlayRenderer(style=style).render(frame, frame_result, frame_events)

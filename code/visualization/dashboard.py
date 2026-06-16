@@ -1,3 +1,10 @@
+"""Dashboard visual de FutBotMX.
+
+Que hace: renderiza marcador, posesion, distancias y eventos en un panel BGR.
+Flujo: recibe Statistics + FrameEvents, calcula layout, dibuja secciones y publica
+el frame renderizado cuando se usa conectado al EventBus.
+"""
+
 from __future__ import annotations
 
 from collections import Counter
@@ -81,7 +88,12 @@ _GAP_RATIO = 0.015
 
 
 class Layout:
-    """Pre-computed pixel geometry for a given dashboard canvas size."""
+    """Geometria precomputada del dashboard.
+
+    Convierte proporciones del canvas a pixeles.
+    Centraliza margenes, alturas, gaps y escalas de texto.
+    Evita recalcular layout dentro de cada seccion.
+    """
 
     def __init__(self, width: int, height: int) -> None:
         self.width = width
@@ -112,10 +124,6 @@ class Layout:
         self.event_summary_y = self.distance_y + self.distance_h + self.gap
         self.story_y = self.event_summary_y + self.event_summary_h + self.gap
 
-        # Backwards-compatible aliases for old _draw_event_counts callers.
-        self.events_y = self.event_summary_y
-        self.events_h = max(36, self.event_summary_h + self.gap + self.story_h)
-
         # Typography scale tuned for a narrow side dashboard.
         base_w = width / 520.0
         base_h = height / 1080.0
@@ -135,7 +143,12 @@ class Layout:
 
 
 class DashboardRenderer:
-    """EventBus-aware wrapper for dashboard rendering."""
+    """Renderer de dashboard con soporte opcional de EventBus.
+
+    Guarda las ultimas estadisticas y eventos recibidos.
+    Renderiza cuando llega un video_frame.
+    Publica el panel final en el evento configurado.
+    """
 
     def __init__(
         self,
@@ -538,53 +551,6 @@ def _draw_event_story(
         _text(canvas, text, (x + pad + 18, row_y), lo.scale_xs, WHITE, lo.thick_sm)
 
         row_y += line_h
-
-
-def _draw_event_counts(
-    canvas: "np.ndarray",
-    lo: Layout,
-    counts: Mapping[str, int],
-    *,
-    compact: bool,
-) -> None:
-    """Legacy event-count drawer kept for compatibility.
-
-    New dashboard frames should prefer _draw_event_summary + _draw_event_story.
-    """
-    x, y, w, h = lo.margin, lo.events_y, lo.content_w, lo.events_h
-    if h <= 0:
-        return
-
-    _panel(canvas, x, y, w, h)
-
-    pad = max(8, lo.margin // 2)
-    label_y = y + max(16, h // 4)
-    _text(canvas, "Eventos", (x + pad, label_y), lo.scale_sm, WHITE, lo.thick_md)
-
-    primary = ["gol_valido", "pase", "colision"]
-    rest = [k for k in EVENT_LABELS if k not in primary and counts.get(k, 0) > 0]
-    keys = primary + ([] if compact else rest)
-
-    if not keys:
-        return
-
-    max_cols = max(1, min(len(keys), w // max(50, int(w * 0.12))))
-    keys = keys[:max_cols]
-
-    col_w = max(1, w // max_cols)
-    value_y = y + h - max(14, h // 7)
-    ev_label_y = y + h - max(34, h // 3)
-    value_scale = lo.scale_lg if not compact else lo.scale_md
-
-    for index, key in enumerate(keys):
-        cx = x + index * col_w
-        label = EVENT_LABELS.get(key, key)
-        value = counts.get(key, 0)
-
-        label = _truncate_text(label, col_w - pad, lo.scale_xs)
-        label_scale = _fit_text_scale(label, col_w - 2 * pad, lo.scale_xs, lo.thick_sm)
-        _text(canvas, label, (cx + pad, ev_label_y), label_scale, MUTED, lo.thick_sm)
-        _text(canvas, str(value), (cx + pad, value_y), value_scale, WHITE, lo.thick_md)
 
 
 # ---------------------------------------------------------------------------
