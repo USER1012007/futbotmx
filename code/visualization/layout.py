@@ -7,6 +7,8 @@ video+mapa a la izquierda con dashboard a la derecha.
 
 from __future__ import annotations
 
+from typing import Optional
+
 try:
     import cv2 as cv
     import numpy as np
@@ -23,8 +25,8 @@ def compose_final_frame(
     video_overlay: "np.ndarray",
     tactical_map: "np.ndarray",
     dashboard: "np.ndarray",
-    *
-    output_size: tuple[int, int] | None = None,
+    *,
+    output_size: Optional[tuple[int, int]] = None,
     left_width_ratio: float = LEFT_WIDTH_RATIO,
     video_preview_height_ratio: float = VIDEO_PREVIEW_HEIGHT_RATIO,
 ) -> "np.ndarray":
