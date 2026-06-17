@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Deque, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Deque, Dict, List, Optional, Tuple
+import math
 
 try:
     import cv2
@@ -21,6 +22,8 @@ if TYPE_CHECKING:
     from domain.entities import Ball, FrameResult, Robot
     from domain.events import FrameEvents
     from infra.event_bus import EventBus
+
+from domain.field import FIELD_GEOMETRY, FieldGeometry as DomainFieldGeometry
 
 
 Color = Tuple[int, int, int]
@@ -108,7 +111,8 @@ class FieldStyle:
     Mantiene configurable el render sin cambiar la logica de dibujo.
     Sus valores se escalan segun el tamano de salida.
     """
-    geometry: FieldGeometry = FieldGeometry()
+    geometry: DomainFieldGeometry = FIELD_GEOMETRY
+    mirror_x: bool = False
 
     # Canvas de salida
     output_size: Tuple[int, int] = (1280, 720)
@@ -157,8 +161,9 @@ class FieldStyle:
     event_radius_px: int = 24
     event_label_scale: float = 0.8
     event_label_line_height_px: int = 26
-    event_display_frames: int = 30
+    event_display_frames: int = 75
     event_max_visible: int = 4
+    entity_display_frames: int = 12
     header_scale: float = 0.8
     header_h_px: int = 24
     arrow_tip_length: float = 0.30
@@ -187,6 +192,8 @@ class TacticalMapRenderer:
         self._latest_events: Optional[FrameEvents] = None
         self._event_bus = event_bus
         self._active_events: Deque[Tuple[tuple, object, int]] = deque()
+        self._visible_robots: Dict[str, Tuple[Robot, int]] = {}
+        self._visible_ball: Optional[Tuple[Ball, int]] = None
 
         if event_bus is not None:
             event_bus.subscribe(frame_event_type, self.on_frame_result)
@@ -202,19 +209,22 @@ class TacticalMapRenderer:
 
     def render(self, frame_result: FrameResult, frame_events: Optional[FrameEvents] = None) -> "np.ndarray":
         canvas = self.draw_field()
+        self._remember_entities(frame_result)
+        robots = self._robots_for_frame(frame_result.frame_id)
+        ball = self._ball_for_frame(frame_result.frame_id)
 
-        for robot in frame_result.robots:
+        for robot in robots:
             if robot.position_metric is not None:
                 self._append_trail(robot)
 
         self._draw_trails(canvas)
 
-        for robot in frame_result.robots:
+        for robot in robots:
             if robot.position_metric is not None:
                 self._draw_robot(canvas, robot)
 
-        if frame_result.ball is not None and frame_result.ball.position_metric is not None:
-            self._draw_ball(canvas, frame_result.ball)
+        if ball is not None and ball.position_metric is not None:
+            self._draw_ball(canvas, ball)
 
         self._draw_events(canvas, frame_events, frame_result.frame_id, frame_result)
 
@@ -229,6 +239,33 @@ class TacticalMapRenderer:
             cv2.LINE_AA,
         )
         return canvas
+
+    def _remember_entities(self, frame_result: FrameResult) -> None:
+        expires_at = frame_result.frame_id + self.style.entity_display_frames
+        for robot in frame_result.robots:
+            if robot.position_metric is not None:
+                self._visible_robots[robot.id] = (robot, expires_at)
+        if frame_result.ball is not None and frame_result.ball.position_metric is not None:
+            self._visible_ball = (frame_result.ball, expires_at)
+
+    def _robots_for_frame(self, frame_id: int) -> List[Robot]:
+        expired = [
+            robot_id
+            for robot_id, (_, expires_at) in self._visible_robots.items()
+            if expires_at <= frame_id
+        ]
+        for robot_id in expired:
+            self._visible_robots.pop(robot_id, None)
+        return [robot for robot, _ in self._visible_robots.values()]
+
+    def _ball_for_frame(self, frame_id: int) -> Optional[Ball]:
+        if self._visible_ball is None:
+            return None
+        ball, expires_at = self._visible_ball
+        if expires_at <= frame_id:
+            self._visible_ball = None
+            return None
+        return ball
 
     def draw_field(self) -> "np.ndarray":
         w, h = self.style.output_size
@@ -342,11 +379,14 @@ class TacticalMapRenderer:
         right_goal_x1 = x1 - max(1, (inset_px - goal_depth_px) // 2)
         right_goal_x0 = right_goal_x1 - goal_depth_px
 
+        left_goal_color = self.style.rival_goal_bgr if self.style.mirror_x else self.style.ally_goal_bgr
+        right_goal_color = self.style.ally_goal_bgr if self.style.mirror_x else self.style.rival_goal_bgr
+
         cv2.rectangle(
             canvas,
             (left_goal_x0, goal_y0),
             (left_goal_x1, goal_y1),
-            self.style.ally_goal_bgr,
+            left_goal_color,
             self._px(self.style.goal_thickness_px),
             cv2.LINE_AA,
         )
@@ -355,7 +395,7 @@ class TacticalMapRenderer:
             canvas,
             (right_goal_x0, goal_y0),
             (right_goal_x1, goal_y1),
-            self.style.rival_goal_bgr,
+            right_goal_color,
             self._px(self.style.goal_thickness_px),
             cv2.LINE_AA,
         )
@@ -386,6 +426,8 @@ class TacticalMapRenderer:
         cv2.circle(canvas, point, radius, color, thickness, cv2.LINE_AA)
         cv2.circle(canvas, point, radius, self.style.text_bgr, self._px(self.style.robot_outline_thickness_px), cv2.LINE_AA)
         angle = getattr(robot, "angle", 0.0) or 0.0
+        if self.style.mirror_x:
+            angle = math.pi - angle
         direction = (
             int(round(point[0] + np.cos(angle) * self._px(self.style.robot_direction_len_px))),
             int(round(point[1] + np.sin(angle) * self._px(self.style.robot_direction_len_px))),
@@ -411,6 +453,8 @@ class TacticalMapRenderer:
         cv2.circle(canvas, point, radius, self.style.text_bgr, self._px(self.style.ball_outline_thickness_px), cv2.LINE_AA)
         dx, dy = getattr(ball, "direction_vector", (0.0, 0.0))
         if (dx, dy) != (0.0, 0.0):
+            if self.style.mirror_x:
+                dx = -dx
             end = (
                 int(round(point[0] + dx * self._px(self.style.ball_direction_len_px))),
                 int(round(point[1] + dy * self._px(self.style.ball_direction_len_px))),
@@ -592,6 +636,8 @@ class TacticalMapRenderer:
     def _to_canvas_point(self, x_cm: float, y_cm: float) -> Tuple[int, int]:
         x0, y0 = getattr(self, "_field_origin_px", (self.style.margin_px, self.style.margin_px + self.style.header_h_px))
         s = getattr(self, "_field_scale_px_cm", 1.0)
+        if self.style.mirror_x:
+            x_cm = self.style.geometry.outer_width_cm - x_cm
         return (int(round(x0 + x_cm * s)), int(round(y0 + y_cm * s)))
 
     def _team_color(self, team_id: str) -> Color:

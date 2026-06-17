@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 import sys
-from typing import Iterable, Optional
+from typing import Literal, Optional
 
 import cv2
 import numpy as np
@@ -19,7 +19,7 @@ from analysis.stats_engine import StatsEngine
 from domain.entities import FrameResult, Point2D
 from infra.configs import Config
 from io_utils.tracking_io import TrackingIO
-from visualization.dashboard import render_dashboard
+from visualization.dashboard import DashboardRenderer
 from visualization.layout import compose_final_frame
 from visualization.tactical_map import FieldStyle, TacticalMapRenderer
 from visualization.video_render import render_video_overlay
@@ -30,12 +30,26 @@ OUTPUT_SIZE = (1600, 900)
 LEFT_WIDTH_RATIO = 0.64
 VIDEO_PREVIEW_HEIGHT_RATIO = 0.50
 TRACKING_PATH = Config.TRACKING_DIR / "tracking.jsonl"
+SOURCE_VIDEO_PATH = Config.VIDEO_DIR / "video1.mp4"
 OUTPUT_DIR = Config.OUTPUT_DIR / "mock_tracking_visualization"
 FRAME_FIRST_PATH = OUTPUT_DIR / "frame_first.png"
 FRAME_EVENT_PATH = OUTPUT_DIR / "frame_first_event.png"
 FRAME_LAST_PATH = OUTPUT_DIR / "frame_last.png"
 VIDEO_PATH = OUTPUT_DIR / "mock_tracking_visualization.mp4"
 MAX_FRAMES: Optional[int] = None
+VIDEO_ROTATION: Literal["clockwise", "counterclockwise", "none"] = "clockwise"
+LETTERBOX_COLOR = (14, 18, 24)
+
+
+@dataclass(frozen=True)
+class VideoFrameTransform:
+    source_width: int
+    source_height: int
+    rotated_width: int
+    rotated_height: int
+    scale: float
+    offset_x: int
+    offset_y: int
 
 
 def main() -> None:
@@ -55,11 +69,11 @@ def main() -> None:
     tactical_h = output_h - video_h
     video_size = (left_w, video_h)
 
-    pixel_bounds = _pixel_bounds(frames)
     event_detector = EventDetector(default_fps=FPS)
     stats_engine = StatsEngine()
+    dashboard_renderer = DashboardRenderer()
     tactical_renderer = TacticalMapRenderer(
-        style=FieldStyle(output_size=(left_w, tactical_h)),
+        style=FieldStyle(output_size=(left_w, tactical_h), mirror_x=True),
         trail_length=60,
     )
 
@@ -72,6 +86,11 @@ def main() -> None:
     if not writer.isOpened():
         raise RuntimeError(f"Could not open video writer for {VIDEO_PATH}")
 
+    source_capture = cv2.VideoCapture(str(SOURCE_VIDEO_PATH))
+    if not source_capture.isOpened():
+        writer.release()
+        raise RuntimeError(f"Could not open source video {SOURCE_VIDEO_PATH}")
+
     first_event_frame: Optional[np.ndarray] = None
     first_frame: Optional[np.ndarray] = None
     last_frame: Optional[np.ndarray] = None
@@ -79,7 +98,13 @@ def main() -> None:
 
     try:
         for source_frame in frames:
-            frame = _scale_frame_pixels(source_frame, pixel_bounds, video_size)
+            raw_video, transform = _read_render_frame(
+                source_capture,
+                source_frame.frame_id,
+                video_size,
+                rotation=VIDEO_ROTATION,
+            )
+            frame = _transform_frame_pixels(source_frame, transform, VIDEO_ROTATION)
             frame_events = event_detector.detect(frame)
             stats = stats_engine.update(frame, frame_events)
             match_time_seconds = frame.timestamp_s if frame.timestamp_s is not None else frame.frame_id / FPS
@@ -87,10 +112,9 @@ def main() -> None:
             for event in frame_events.eventos:
                 event_counts[event.type] = event_counts.get(event.type, 0) + 1
 
-            raw_video = _mock_video_frame(frame.frame_id, video_size)
             video_overlay = render_video_overlay(raw_video, frame, frame_events)
             tactical_map = tactical_renderer.render(frame, frame_events)
-            dashboard = render_dashboard(stats, frame_events, match_time_seconds, dashboard_w, output_h)
+            dashboard = dashboard_renderer.render(stats, frame_events, match_time_seconds, dashboard_w, output_h)
 
             final_frame = compose_final_frame(
                 video_overlay,
@@ -109,6 +133,7 @@ def main() -> None:
             writer.write(final_frame)
             last_frame = final_frame
     finally:
+        source_capture.release()
         writer.release()
 
     if first_frame is not None:
@@ -126,34 +151,85 @@ def main() -> None:
     print(f"event_counts: {event_counts}")
 
 
-def _pixel_bounds(frames: Iterable[FrameResult]) -> tuple[float, float, float, float]:
-    xs: list[float] = []
-    ys: list[float] = []
-    for frame in frames:
-        for robot in frame.robots:
-            xs.append(float(robot.position_pixel.x))
-            ys.append(float(robot.position_pixel.y))
-        if frame.ball is not None:
-            xs.append(float(frame.ball.position_pixel.x))
-            ys.append(float(frame.ball.position_pixel.y))
+def _read_render_frame(
+    capture: cv2.VideoCapture,
+    frame_id: int,
+    output_size: tuple[int, int],
+    *,
+    rotation: Literal["clockwise", "counterclockwise", "none"],
+) -> tuple[np.ndarray, VideoFrameTransform]:
+    capture.set(cv2.CAP_PROP_POS_FRAMES, int(frame_id))
+    ok, frame = capture.read()
+    if not ok or frame is None:
+        raise RuntimeError(f"Could not read frame {frame_id} from {SOURCE_VIDEO_PATH}")
 
-    if not xs or not ys:
-        return 0.0, 1.0, 0.0, 1.0
-    return min(xs), max(xs), min(ys), max(ys)
+    source_h, source_w = frame.shape[:2]
+    rotated = _rotate_frame(frame, rotation)
+    rendered, transform = _letterbox_frame(
+        rotated,
+        output_size,
+        source_width=source_w,
+        source_height=source_h,
+    )
+    return rendered, transform
 
 
-def _scale_frame_pixels(
+def _rotate_frame(
+    frame: np.ndarray,
+    rotation: Literal["clockwise", "counterclockwise", "none"],
+) -> np.ndarray:
+    if rotation == "clockwise":
+        return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    if rotation == "counterclockwise":
+        return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    if rotation == "none":
+        return frame
+    raise ValueError(f"Unsupported video rotation: {rotation}")
+
+
+def _letterbox_frame(
+    frame: np.ndarray,
+    output_size: tuple[int, int],
+    *,
+    source_width: int,
+    source_height: int,
+) -> tuple[np.ndarray, VideoFrameTransform]:
+    output_w, output_h = output_size
+    frame_h, frame_w = frame.shape[:2]
+    scale = min(output_w / frame_w, output_h / frame_h)
+    resized_w = max(1, int(round(frame_w * scale)))
+    resized_h = max(1, int(round(frame_h * scale)))
+    offset_x = (output_w - resized_w) // 2
+    offset_y = (output_h - resized_h) // 2
+
+    rendered = np.full((output_h, output_w, 3), LETTERBOX_COLOR, dtype=np.uint8)
+    resized = cv2.resize(frame, (resized_w, resized_h), interpolation=cv2.INTER_AREA)
+    rendered[offset_y : offset_y + resized_h, offset_x : offset_x + resized_w] = resized
+
+    transform = VideoFrameTransform(
+        source_width=source_width,
+        source_height=source_height,
+        rotated_width=frame_w,
+        rotated_height=frame_h,
+        scale=scale,
+        offset_x=offset_x,
+        offset_y=offset_y,
+    )
+    return rendered, transform
+
+
+def _transform_frame_pixels(
     frame: FrameResult,
-    bounds: tuple[float, float, float, float],
-    video_size: tuple[int, int],
+    transform: VideoFrameTransform,
+    rotation: Literal["clockwise", "counterclockwise", "none"],
 ) -> FrameResult:
     robots = [
-        replace(robot, position_pixel=_scale_point(robot.position_pixel, bounds, video_size))
+        replace(robot, position_pixel=_transform_point(robot.position_pixel, transform, rotation))
         for robot in frame.robots
     ]
     ball = None
     if frame.ball is not None:
-        ball = replace(frame.ball, position_pixel=_scale_point(frame.ball.position_pixel, bounds, video_size))
+        ball = replace(frame.ball, position_pixel=_transform_point(frame.ball.position_pixel, transform, rotation))
 
     return replace(
         frame,
@@ -163,23 +239,30 @@ def _scale_frame_pixels(
     )
 
 
-def _scale_point(
+def _transform_point(
     point: Point2D,
-    bounds: tuple[float, float, float, float],
-    video_size: tuple[int, int],
+    transform: VideoFrameTransform,
+    rotation: Literal["clockwise", "counterclockwise", "none"],
 ) -> Point2D:
-    min_x, max_x, min_y, max_y = bounds
-    width, height = video_size
-    pad_x = max(24, int(width * 0.05))
-    pad_y = max(18, int(height * 0.06))
-    usable_w = max(1, width - 2 * pad_x)
-    usable_h = max(1, height - 2 * pad_y)
-    span_x = max(max_x - min_x, 1.0)
-    span_y = max(max_y - min_y, 1.0)
-
-    x = pad_x + (float(point.x) - min_x) / span_x * usable_w
-    y = pad_y + (float(point.y) - min_y) / span_y * usable_h
+    x, y = _rotate_point(float(point.x), float(point.y), transform, rotation)
+    x = transform.offset_x + x * transform.scale
+    y = transform.offset_y + y * transform.scale
     return Point2D(x, y, is_metric=False)
+
+
+def _rotate_point(
+    x: float,
+    y: float,
+    transform: VideoFrameTransform,
+    rotation: Literal["clockwise", "counterclockwise", "none"],
+) -> tuple[float, float]:
+    if rotation == "clockwise":
+        return transform.source_height - 1.0 - y, x
+    if rotation == "counterclockwise":
+        return y, transform.source_width - 1.0 - x
+    if rotation == "none":
+        return x, y
+    raise ValueError(f"Unsupported video rotation: {rotation}")
 
 
 def _mock_video_frame(frame_id: int, video_size: tuple[int, int]) -> np.ndarray:
