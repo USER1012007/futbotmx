@@ -14,6 +14,10 @@ class TrackingIO:
         with open(self.file_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
 
+    def reset(self) -> None:
+        with open(self.file_path, "w", encoding="utf-8"):
+            pass
+
     def read_all(self):
         results = []
         if not self.file_path.exists():

@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from typing import Optional
 from domain.entities import Point2D
+from domain.field import FIELD_GEOMETRY
 from infra.configs import Config
 
 class HomographyEngine:
@@ -9,8 +10,8 @@ class HomographyEngine:
         self.cfg = cfg
         self.H: Optional[np.ndarray] = None
         self.smoothing_factor = smoothing_factor
-        self.field_width_cm = 243.0
-        self.field_height_cm = 182.0
+        self.field_width_cm = FIELD_GEOMETRY.outer_width_cm
+        self.field_height_cm = FIELD_GEOMETRY.outer_height_cm
         
         # Persistencia para frames donde no se detecten las porterías
         self.last_corners: Optional[np.ndarray] = None
@@ -118,9 +119,5 @@ class HomographyEngine:
         pixel_array = np.array([[[point_pixel.x, point_pixel.y]]], dtype=np.float32)
         metric_array = cv2.perspectiveTransform(pixel_array, self.H)
         mx, my = metric_array[0][0]
-        
-        # Clamping
-        mx = max(0.0, min(self.field_width_cm, mx))
-        my = max(0.0, min(self.field_height_cm, my))
         
         return Point2D(x=float(mx), y=float(my), is_metric=True)

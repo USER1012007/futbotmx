@@ -6,6 +6,7 @@
 *.envrc
 *.png
 *.py[cod]
+*.MOV
 
 .direnv/
 __pycache__/

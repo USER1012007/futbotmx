@@ -36,14 +36,33 @@ from domain.events import (
     RobotRepositionEvent,
     RobotStoppedEvent,
 )
+from domain.field import (
+    crossed_left_goal_entry,
+    crossed_right_goal_entry,
+    inside_court,
+    inside_goal_mouth_y,
+    robot_inside_penalty_area,
+)
 from infra.event_bus import EventBus
 
 
-COURT_WIDTH_CM = 243.0
-COURT_HEIGHT_CM = 182.0
-GOAL_Y_MIN_CM = 61.0
-GOAL_Y_MAX_CM = 121.0
-ROBOT_RADIUS_CM = 11.0
+EVENT_COOLDOWN_FRAMES: Dict[str, int] = {
+    "pase": 15,
+    "colision": 30,
+    "fuera_de_cancha": 30,
+    "gol_valido": 90,
+    "gol_invalido": 90,
+    "robot_detenido": 90,
+    "sacar_robot": 90,
+    "panic": 45,
+    "reposicion_balon": 45,
+    "reposicion_robot": 45,
+}
+
+GOAL_CONTACT_DISTANCE_CM = 38.0
+GOAL_CONTACT_MEMORY_FRAMES = 45
+RIGHT_GOAL_FALLBACK_TEAM = "allies"
+LEFT_GOAL_FALLBACK_TEAM = "rivals"
 
 
 class EventDetector:
@@ -57,17 +76,26 @@ class EventDetector:
         self._prev_penalized: Dict[str, bool] = {}
         self._last_possession_robot: Optional[Robot] = None
         self._pending_pass_from: Optional[Robot] = None
+        self._last_ball_contact_robot: Optional[Robot] = None
+        self._last_ball_contact_frame: Optional[int] = None
+        self._last_emitted_events: Dict[Tuple, int] = {}
+        self._last_frame_seen: Optional[int] = None
 
         if self._event_bus is not None:
             self._event_bus.subscribe("frame_result", self._on_frame_result)
 
     def detect(self, frame_result: FrameResult) -> FrameEvents:
         frame = int(frame_result.frame_id)
+        if self._last_frame_seen is not None and frame < self._last_frame_seen:
+            self._last_emitted_events.clear()
+        self._last_frame_seen = frame
+
         timestamp_s = self._timestamp_s(frame_result)
         events = FrameEvents(frame=frame, timestamp_s=timestamp_s, eventos=[])
 
         valid_robots = [robot for robot in frame_result.robots if self._position(robot) is not None]
         ball_position = self._position(frame_result.ball) if frame_result.ball is not None else None
+        self._update_ball_contact(valid_robots, ball_position, frame)
 
         events.eventos.extend(self._detect_panic(frame_result, frame, timestamp_s))
         events.eventos.extend(self._detect_collisions(valid_robots, frame, timestamp_s))
@@ -88,6 +116,8 @@ class EventDetector:
         if goal_event is not None:
             invalid_goal_event = self._detect_invalid_goal(goal_event, frame_result.robots, frame, timestamp_s)
             events.eventos.append(invalid_goal_event if invalid_goal_event is not None else goal_event)
+
+        events.eventos = self._dedupe_events(events.eventos, frame)
 
         self._update_last_valid_positions(frame_result.robots, frame_result.ball)
         self._prev = frame_result
@@ -287,26 +317,30 @@ class EventDetector:
         if self._prev is None or ball is None or ball_position is None or self._prev.ball is None:
             return None
         previous_position = self._position(self._prev.ball)
-        if previous_position is None or not (GOAL_Y_MIN_CM <= ball_position[1] <= GOAL_Y_MAX_CM):
+        if previous_position is None or not inside_goal_mouth_y(ball_position[1]):
             return None
 
-        if previous_position[0] < COURT_WIDTH_CM <= ball_position[0]:
+        if crossed_right_goal_entry(previous_position[0], ball_position[0]):
+            team, scorer_robot = self._goal_team_and_scorer(RIGHT_GOAL_FALLBACK_TEAM, frame)
             return GoalEvent(
                 frame=frame,
                 timestamp_s=timestamp_s,
                 position_cm=ball_position,
                 severity="success",
-                team="allies",
+                team=team,
                 velocity_cm_s=ball.speed_cm_s,
+                scorer_robot=scorer_robot,
             )
-        if previous_position[0] > 0.0 >= ball_position[0]:
+        if crossed_left_goal_entry(previous_position[0], ball_position[0]):
+            team, scorer_robot = self._goal_team_and_scorer(LEFT_GOAL_FALLBACK_TEAM, frame)
             return GoalEvent(
                 frame=frame,
                 timestamp_s=timestamp_s,
                 position_cm=ball_position,
                 severity="success",
-                team="rivals",
+                team=team,
                 velocity_cm_s=ball.speed_cm_s,
+                scorer_robot=scorer_robot,
             )
         return None
 
@@ -416,6 +450,113 @@ class EventDetector:
 
         return events
 
+    def _dedupe_events(self, events: List[object], frame: int) -> List[object]:
+        deduped: List[object] = []
+        for event in events:
+            event_type = getattr(event, "type", event.__class__.__name__)
+            cooldown = EVENT_COOLDOWN_FRAMES.get(event_type, 0)
+            if cooldown <= 0:
+                deduped.append(event)
+                continue
+
+            key = self._dedupe_key(event)
+            last_frame = self._last_emitted_events.get(key)
+            if last_frame is not None and frame - last_frame < cooldown:
+                continue
+
+            self._last_emitted_events[key] = frame
+            deduped.append(event)
+
+        return deduped
+
+    def _dedupe_key(self, event: object) -> Tuple:
+        event_type = getattr(event, "type", event.__class__.__name__)
+
+        if event_type == "pase":
+            return (
+                event_type,
+                getattr(event, "from_robot_id", getattr(event, "from_id", None)),
+                getattr(event, "to_robot_id", getattr(event, "to", None)),
+            )
+
+        if event_type == "colision":
+            robot_ids = sorted(getattr(robot, "id", str(robot)) for robot in getattr(event, "robots", []))
+            return (event_type, tuple(robot_ids))
+
+        if event_type in {"gol_valido", "gol_invalido"}:
+            return (event_type, self._team_name(getattr(event, "team", "")))
+
+        if event_type in {"robot_detenido", "sacar_robot", "reposicion_robot"}:
+            robot = getattr(event, "robot", None)
+            return (event_type, getattr(robot, "id", None), self._position_bucket(self._event_position(event)))
+
+        if event_type == "fuera_de_cancha":
+            return (
+                event_type,
+                getattr(event, "object_type", getattr(event, "object", None)),
+                getattr(event, "object_id", None),
+            )
+
+        if event_type == "reposicion_balon":
+            return (
+                event_type,
+                getattr(event, "reason", None),
+                self._position_bucket(self._event_position(event)),
+            )
+
+        if event_type == "panic":
+            return (event_type, getattr(event, "reason", None))
+
+        return (event_type, self._position_bucket(self._event_position(event)))
+
+    @staticmethod
+    def _event_position(event: object) -> Optional[Tuple[float, float]]:
+        for attr in ("position_cm", "position", "last_position_cm", "target_position_cm", "to_position_cm"):
+            value = getattr(event, attr, None)
+            if value is not None:
+                return EventDetector._tuple_or_none(value)
+        return None
+
+    @staticmethod
+    def _position_bucket(position: Optional[Tuple[float, float]], bucket_cm: float = 10.0) -> Optional[Tuple[int, int]]:
+        if position is None:
+            return None
+        return (int(round(position[0] / bucket_cm)), int(round(position[1] / bucket_cm)))
+
+    def _update_ball_contact(
+        self,
+        robots: Iterable[Robot],
+        ball_position: Optional[Tuple[float, float]],
+        frame: int,
+    ) -> None:
+        if ball_position is None:
+            return
+
+        closest_robot: Optional[Robot] = None
+        closest_distance = GOAL_CONTACT_DISTANCE_CM
+        for robot in robots:
+            robot_position = self._position(robot)
+            if robot_position is None:
+                continue
+            distance = self._distance(robot_position, ball_position)
+            if distance <= closest_distance:
+                closest_robot = robot
+                closest_distance = distance
+
+        if closest_robot is not None:
+            self._last_ball_contact_robot = closest_robot
+            self._last_ball_contact_frame = frame
+
+    def _goal_team_and_scorer(self, fallback_team: str, frame: int) -> Tuple[str, Optional[Robot]]:
+        if (
+            self._last_ball_contact_robot is not None
+            and self._last_ball_contact_frame is not None
+            and frame - self._last_ball_contact_frame <= GOAL_CONTACT_MEMORY_FRAMES
+        ):
+            team = str(getattr(self._last_ball_contact_robot, "team_id", "") or fallback_team)
+            return team, self._last_ball_contact_robot
+        return fallback_team, None
+
     def _update_last_valid_positions(self, robots: Iterable[Robot], ball: Optional[Ball]) -> None:
         for robot in robots:
             position = self._position(robot)
@@ -447,14 +588,11 @@ class EventDetector:
 
     @staticmethod
     def _inside_court(position: Tuple[float, float]) -> bool:
-        return 0.0 <= position[0] <= COURT_WIDTH_CM and 0.0 <= position[1] <= COURT_HEIGHT_CM
+        return inside_court(position)
 
     @staticmethod
     def _robot_inside_penalty_area(position: Tuple[float, float], area: str) -> bool:
-        x, y = position
-        if area == "ally":
-            return x - ROBOT_RADIUS_CM >= 0.0 and x + ROBOT_RADIUS_CM <= 25.0 and y - ROBOT_RADIUS_CM >= 51.0 and y + ROBOT_RADIUS_CM <= 131.0
-        return x - ROBOT_RADIUS_CM >= 218.0 and x + ROBOT_RADIUS_CM <= 243.0 and y - ROBOT_RADIUS_CM >= 51.0 and y + ROBOT_RADIUS_CM <= 131.0
+        return robot_inside_penalty_area(position, area)
 
     @staticmethod
     def _tracker_ids(frame_result: FrameResult) -> Set[int]:
