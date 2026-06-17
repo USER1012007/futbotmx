@@ -1,18 +1,21 @@
 from infra.configs import Config
 from vision.pipeline import Pipeline
+from analysis.pipeline import AnalysisPipeline
 import sys
 from pathlib import Path
 
 def main():
     cfg = Config()
-    video_path = cfg.VIDEO_DIR / "video1.mp4"
+    video_path = cfg.BASE_DIR / "data/videos/video1.mp4"
     
     if not video_path.exists():
-        print(f"Video file not found at {video_path}")
+        print(f"Video/Image file not found at {video_path}")
         sys.exit(1)
         
-    print(f"Starting pipeline with {video_path}...")
+    print(f"Starting system...")
     pipeline = Pipeline(cfg, str(video_path))
+    analysis = AnalysisPipeline(pipeline.event_bus)
+    
     pipeline.run()
     print("Pipeline finished.")
 
