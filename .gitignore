@@ -5,6 +5,7 @@
 *.lock
 *.envrc
 *.png
+*.MOV
 *.py[cod]
 
 .direnv/

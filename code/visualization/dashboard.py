@@ -7,9 +7,9 @@ el frame renderizado cuando se usa conectado al EventBus.
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, deque
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Deque, Dict, Iterable, Mapping, Optional, Tuple
 
 try:
     import cv2
@@ -77,6 +77,8 @@ EVENT_COLORS: Mapping[str, Color] = {
     "sacar_robot": (40, 40, 200),
     "panic": (255, 60, 255),
 }
+
+DASHBOARD_HISTORY_MAX_EVENTS = 8
 
 # --- Layout proportions (relative to canvas dimensions) ---
 _HEADER_H_RATIO = 0.16
@@ -167,6 +169,9 @@ class DashboardRenderer:
         self._latest_stats: Optional[Statistics] = None
         self._latest_events: Optional[FrameEvents] = None
         self._dashboard_size = dashboard_size
+        self._event_counts: Counter[str] = Counter()
+        self._event_history: Deque[object] = deque(maxlen=DASHBOARD_HISTORY_MAX_EVENTS)
+        self._seen_event_keys: set[tuple] = set()
 
         if event_bus is not None:
             event_bus.subscribe(statistics_event_type, self.on_statistics)
@@ -178,6 +183,7 @@ class DashboardRenderer:
 
     def on_frame_events(self, events: FrameEvents) -> None:
         self._latest_events = events
+        self._remember_events(events)
 
     def on_video_frame(self, payload: Any) -> None:
         frame, match_time_seconds = self._unpack_video_frame(payload)
@@ -207,7 +213,18 @@ class DashboardRenderer:
         width: int,
         height: int,
     ) -> "np.ndarray":
-        return render(stats, events, match_time_seconds, width, height)
+        self._remember_events(events)
+        counts = dict(getattr(stats, "event_counts", {}) or self._event_counts)
+        history = list(self._event_history)
+        return render(
+            stats,
+            events,
+            match_time_seconds,
+            width,
+            height,
+            event_counts=counts,
+            event_history=history,
+        )
 
     def render_final_report(
         self,
@@ -229,6 +246,15 @@ class DashboardRenderer:
             return frame, self.match_time_seconds
         return payload, self.match_time_seconds
 
+    def _remember_events(self, events: FrameEvents) -> None:
+        for event in getattr(events, "eventos", []):
+            key = _event_key(event)
+            if key in self._seen_event_keys:
+                continue
+            self._seen_event_keys.add(key)
+            self._event_counts[getattr(event, "type", event.__class__.__name__)] += 1
+            self._event_history.append(event)
+
 
 # ---------------------------------------------------------------------------
 # Public rendering functions
@@ -240,6 +266,9 @@ def render(
     match_time_seconds: float,
     width: int,
     height: int,
+    *,
+    event_counts: Optional[Mapping[str, int]] = None,
+    event_history: Optional[Iterable[object]] = None,
 ) -> "np.ndarray":
     """Render a per-frame FutBotMX HUD dashboard as a BGR image."""
     if width <= 0 or height <= 0:
@@ -251,8 +280,8 @@ def render(
     _draw_header(canvas, lo, stats, match_time_seconds)
     _draw_possession(canvas, lo, _get_possession(stats))
     _draw_distance(canvas, lo, _get_distance(stats))
-    _draw_event_summary(canvas, lo, _count_events(events))
-    _draw_event_story(canvas, lo, events)
+    _draw_event_summary(canvas, lo, event_counts or _get_event_counts(stats, events))
+    _draw_event_story(canvas, lo, event_history or getattr(events, "eventos", []))
 
     return canvas
 
@@ -278,7 +307,7 @@ def render_final_report(
     _draw_possession(canvas, lo, _get_possession(stats))
     _draw_distance(canvas, lo, _get_distance(stats))
     _draw_event_summary(canvas, lo, _count_events(events))
-    _draw_event_story(canvas, lo, events)
+    _draw_event_story(canvas, lo, getattr(events, "eventos", []))
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -429,7 +458,15 @@ def _draw_distance(
         _text(canvas, "Sin datos", (x + pad, y + h // 2 + 6), lo.scale_sm, MUTED, 1)
         return
 
-    items = sorted(distance_cm.items())[:6]
+    items = [
+        (team, float(distance_cm.get(team, 0.0)))
+        for team in ("allies", "rivals")
+        if team in distance_cm
+    ]
+    if not items:
+        _text(canvas, "Sin datos de equipos", (x + pad, y + h // 2 + 6), lo.scale_sm, MUTED, 1)
+        return
+
     max_distance = max(max(v for _, v in items), 1.0)
 
     header_space = max(30, h // 4)
@@ -516,7 +553,7 @@ def _draw_event_summary(
 def _draw_event_story(
     canvas: "np.ndarray",
     lo: Layout,
-    events: FrameEvents,
+    events: Iterable[object],
 ) -> None:
     x, y, w, h = lo.margin, lo.story_y, lo.content_w, lo.story_h
     _panel(canvas, x, y, w, h)
@@ -531,7 +568,7 @@ def _draw_event_story(
         lo.thick_md,
     )
 
-    recent_events = list(getattr(events, "eventos", []))[-6:]
+    recent_events = list(events)[-6:]
     if not recent_events:
         _text(canvas, "Sin eventos recientes", (x + pad, y + h // 2), lo.scale_xs, MUTED, lo.thick_sm)
         return
@@ -566,6 +603,20 @@ def _count_events(events: FrameEvents) -> Dict[str, int]:
     )
 
 
+def _get_event_counts(stats: Statistics, events: FrameEvents) -> Mapping[str, int]:
+    counts = getattr(stats, "event_counts", None)
+    return counts or _count_events(events)
+
+
+def _event_key(event: object) -> tuple:
+    event_type = getattr(event, "type", event.__class__.__name__)
+    frame = getattr(event, "frame", None)
+    robot = getattr(event, "robot", None)
+    robot_id = getattr(robot, "id", None)
+    position = getattr(event, "position_cm", getattr(event, "position", None))
+    return (event_type, frame, robot_id, str(position))
+
+
 def _get_score(stats: Statistics) -> Score:
     return getattr(stats, "score", Score())
 
@@ -596,9 +647,7 @@ def _format_time(seconds: float) -> str:
 
 def _event_to_short_text(event: object) -> str:
     event_type = getattr(event, "type", event.__class__.__name__)
-    frame = getattr(event, "frame", None)
-
-    prefix = f"F{frame} - " if frame is not None else ""
+    prefix = _event_time_prefix(event)
 
     if event_type == "gol_valido":
         team = getattr(event, "team", "?")
@@ -653,6 +702,15 @@ def _event_to_short_text(event: object) -> str:
         return f"{prefix}Panic: {reason}"
 
     return f"{prefix}{EVENT_LABELS.get(event_type, event_type)}"
+
+
+def _event_time_prefix(event: object) -> str:
+    timestamp_s = getattr(event, "timestamp_s", None)
+    if timestamp_s is not None:
+        return f"{_format_time(float(timestamp_s))} - "
+
+    frame = getattr(event, "frame", None)
+    return f"F{frame} - " if frame is not None else ""
 
 
 def _event_color(event: object) -> Color:

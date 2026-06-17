@@ -16,5 +16,9 @@ class VideoSource:
             return None
         return frame
 
+    @property
+    def fps(self) -> float:
+        return float(self.cap.get(cv2.CAP_PROP_FPS) or 0.0)
+
     def release(self):
         self.cap.release()

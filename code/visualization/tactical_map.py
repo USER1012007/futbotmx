@@ -194,6 +194,7 @@ class TacticalMapRenderer:
         self._active_events: Deque[Tuple[tuple, object, int]] = deque()
         self._visible_robots: Dict[str, Tuple[Robot, int]] = {}
         self._visible_ball: Optional[Tuple[Ball, int]] = None
+        self._trail_expires: Dict[str, int] = {}
 
         if event_bus is not None:
             event_bus.subscribe(frame_event_type, self.on_frame_result)
@@ -213,9 +214,11 @@ class TacticalMapRenderer:
         robots = self._robots_for_frame(frame_result.frame_id)
         ball = self._ball_for_frame(frame_result.frame_id)
 
-        for robot in robots:
+        for robot in frame_result.robots:
             if robot.position_metric is not None:
-                self._append_trail(robot)
+                self._append_trail(robot, frame_result.frame_id)
+
+        self._purge_expired_trails(frame_result.frame_id)
 
         self._draw_trails(canvas)
 
@@ -405,9 +408,20 @@ class TacticalMapRenderer:
         self._field_scale_px_cm = scale
         return canvas
 
-    def _append_trail(self, robot: Robot) -> None:
+    def _append_trail(self, robot: Robot, frame_id: int) -> None:
         p = robot.position_metric
         self._trails[robot.id].append((p.x, p.y))
+        self._trail_expires[robot.id] = frame_id + self.style.entity_display_frames
+
+    def _purge_expired_trails(self, frame_id: int) -> None:
+        expired = [
+            robot_id
+            for robot_id, expires_at in self._trail_expires.items()
+            if expires_at <= frame_id
+        ]
+        for robot_id in expired:
+            self._trail_expires.pop(robot_id, None)
+            self._trails.pop(robot_id, None)
 
     def _draw_trails(self, canvas: "np.ndarray") -> None:
         for points in self._trails.values():
