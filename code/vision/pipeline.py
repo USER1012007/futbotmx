@@ -31,6 +31,7 @@ class Pipeline:
         self._last_valid_ball = None
         self._last_valid_ball_frame: int | None = None
         
+
         # Annotators
         self.mask_annotator = sv.MaskAnnotator()
         self.box_annotator = sv.BoxAnnotator()

@@ -11,7 +11,7 @@ CLASS_ROBOT = 0
 CLASS_BALL  = 1
 CLASS_FIELD = 2
 
-CONF_THRESHOLD   = 0.15        # más bajo para no perder bola naranja pequeña
+CONF_THRESHOLD   = 0.15        # más bajo para no perder bola naranja pequena
 MAX_ROBOTS       = 4
 MAX_BALL_AGE     = 8
 MAX_ROBOT_AGE    = 12

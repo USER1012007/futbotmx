@@ -5,6 +5,7 @@ from domain.entities import Point2D
 from domain.field import FIELD_GEOMETRY
 from infra.configs import Config
 
+
 class HomographyEngine:
     def __init__(self, cfg: Config, smoothing_factor: float = 0.2):
         self.cfg = cfg
