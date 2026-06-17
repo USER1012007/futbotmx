@@ -11,13 +11,13 @@ CLASS_ROBOT = 0
 CLASS_BALL  = 1
 CLASS_FIELD = 2
 
-CONF_THRESHOLD   = 0.20        # más bajo para no perder bola naranja pequeña
-MAX_ROBOTS       = 3
+CONF_THRESHOLD   = 0.15        # más bajo para no perder bola naranja pequeña
+MAX_ROBOTS       = 4
 MAX_BALL_AGE     = 8
 MAX_ROBOT_AGE    = 12
-BALL_MIN_AREA    = 15          # bola naranja es MUY pequeña en imagen
+BALL_MIN_AREA    = 12          # bola naranja es MUY pequeña en imagen
 BALL_MAX_AREA    = 2500
-NMS_IOU_BALL     = 0.3
+NMS_IOU_BALL     = 0.2
 FIELD_CACHE_EVERY = 30
 
 TEXT_PROMPTS = [
@@ -171,9 +171,11 @@ class SegmentationEngine:
         # ── Construir entidades ───────────────────────────────────────────────
         robots = []
         for i in range(len(robots_det)):
+            # ByteTrack garantiza que tracker_id sea un entero único
             tid = int(robots_det.tracker_id[i]) if robots_det.tracker_id is not None else -1
             if tid == -1:
                 continue
+            
             xyxy = robots_det.xyxy[i]
             pos  = make_pixel_point(*_center(xyxy))
             robots.append(Robot(
