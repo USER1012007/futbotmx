@@ -192,9 +192,41 @@ class SegmentationEngine:
         self._last_ball_center = center
 
     def process_frame(self, frame: cv2.typing.MatLike, frame_id: int) -> FrameResult:
+        # 1. Inferencia base (full image)
         self.predictor.set_image(frame)
-        results    = self.predictor(text=TEXT_PROMPTS)[0]
+        results = self.predictor(text=TEXT_PROMPTS)[0]
         detections = sv.Detections.from_ultralytics(results)
+
+        # 2. Inferencia en ROI (si perdimos la bola)
+        if self._last_ball_center and self._ball_age > 0:
+            roi_x, roi_y = self._last_ball_center
+            size = 256 # Tamaño del crop para mantener alta resolución
+            h, w = frame.shape[:2]
+            
+            x1 = int(max(0, roi_x - size // 2))
+            y1 = int(max(0, roi_y - size // 2))
+            x2 = int(min(w, x1 + size))
+            y2 = int(min(h, y1 + size))
+            
+            crop = frame[y1:y2, x1:x2]
+            self.predictor.set_image(crop)
+            roi_results = self.predictor(text=[TEXT_PROMPTS[1]])[0] # Solo bola
+            roi_dets = sv.Detections.from_ultralytics(roi_results)
+            
+            # Ajustar coordenadas del crop
+            if len(roi_dets) > 0:
+                roi_dets.xyxy[:, [0, 2]] += x1
+                roi_dets.xyxy[:, [1, 3]] += y1
+                
+                # Combinar con detecciones base
+                combined_xyxy = np.concatenate([detections.xyxy, roi_dets.xyxy])
+                combined_conf = np.concatenate([detections.confidence, roi_dets.confidence])
+                combined_cls  = np.concatenate([detections.class_id, roi_dets.class_id])
+                detections = sv.Detections(
+                    xyxy=combined_xyxy,
+                    confidence=combined_conf,
+                    class_id=combined_cls
+                )
 
         # Filtro global de confianza
         detections = detections[detections.confidence > CONF_THRESHOLD]
