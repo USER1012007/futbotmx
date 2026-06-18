@@ -12,19 +12,19 @@ CLASS_ROBOT = 0
 CLASS_BALL  = 1
 CLASS_FIELD = 2
 
-CONF_THRESHOLD   = 0.15        # más bajo para no perder bola naranja pequena
+CONF_THRESHOLD   = 0.25        # más bajo para no perder bola naranja pequena
 MAX_ROBOTS       = 4
-MAX_BALL_AGE     = 8
+MAX_BALL_AGE     = 10
 MAX_ROBOT_AGE    = 12
-NMS_IOU_BALL     = 0.2
+NMS_IOU_BALL     = 0.0
 FIELD_CACHE_EVERY = 30
-BALL_SEARCH_RADIUS_PX = 110.0
-BALL_SEARCH_GROWTH_PX = 35.0
-BALL_MAX_SEARCH_RADIUS_PX = 320.0
+BALL_SEARCH_RADIUS_PX = 80.0
+BALL_SEARCH_GROWTH_PX = 15.0
+BALL_MAX_SEARCH_RADIUS_PX = 200.0
 
 TEXT_PROMPTS = [
     "small wheeled soccer robot on green field",          # class 0
-    "small orange ball on green surface",                 # class 1
+    "small bright orange circular ball on green floor, vivid saturated orange dot, overhead view",
     "flat green soccer field surface", # class 2
 ]
 
@@ -49,7 +49,7 @@ class SegmentationEngine:
             minimum_iou_threshold=0.2,
         )
         self.ball_tracker = ByteTrackTracker(
-            lost_track_buffer=10,
+            lost_track_buffer=8,
             track_activation_threshold=0.1,
             minimum_iou_threshold=0.1,
         )
@@ -112,17 +112,31 @@ class SegmentationEngine:
         frame: np.ndarray,
         robot_boxes: np.ndarray,
     ) -> sv.Detections:
-        valid = ball_utils.filter_ball_by_area(fresh)
-        valid = ball_utils.filter_ball_by_aspect_ratio(valid)
-        valid = ball_utils.filter_ball_by_orange_support(valid, frame)
-        valid = ball_utils.filter_ball_against_robots(valid, robot_boxes)
-        valid = cv_utils.nms_detections(valid, NMS_IOU_BALL)
+        # 1. Candidatos de SAM
+        sam_candidates = ball_utils.filter_ball_by_area(fresh)
+        sam_candidates = ball_utils.filter_ball_by_aspect_ratio(sam_candidates)
+        sam_candidates = ball_utils.filter_ball_by_orange_support(sam_candidates, frame)
+        sam_candidates = ball_utils.filter_ball_against_robots(sam_candidates, robot_boxes)
 
-        hsv = ball_utils.hsv_ball_fallback(frame, self.cached_field_mask, robot_boxes)
-        if len(hsv) > 0:
-            return self._gate_ball_candidates(hsv)
+        # 2. Candidatos de HSV (siempre buscar, son muy rápidos)
+        hsv_candidates = ball_utils.hsv_ball_fallback(frame, self.cached_field_mask, robot_boxes)
 
-        return self._gate_ball_candidates(valid)
+        # 3. Combinar ambos conjuntos
+        if len(sam_candidates) > 0 and len(hsv_candidates) > 0:
+            combined_xyxy = np.concatenate([sam_candidates.xyxy, hsv_candidates.xyxy])
+            combined_conf = np.concatenate([sam_candidates.confidence, hsv_candidates.confidence])
+            combined_cls  = np.concatenate([sam_candidates.class_id, hsv_candidates.class_id])
+            all_candidates = sv.Detections(
+                xyxy=combined_xyxy,
+                confidence=combined_conf,
+                class_id=combined_cls
+            )
+        elif len(sam_candidates) > 0:
+            all_candidates = sam_candidates
+        else:
+            all_candidates = hsv_candidates
+
+        return cv_utils.nms_detections(all_candidates, 0.3)
 
     def _get_tracked_ball(self, tracked: sv.Detections) -> sv.Detections:
         self._update_ball_cache(tracked)
@@ -133,11 +147,17 @@ class SegmentationEngine:
         return sv.Detections.empty()
 
     def _gate_ball_candidates(self, det: sv.Detections) -> sv.Detections:
-        if len(det) == 0 or self._last_ball_center is None:
+        if len(det) == 0:
             return det
+        
+        # Si no hay centro anterior, devolvemos la de mayor confianza
+        if self._last_ball_center is None:
+            return det[[np.argmax(det.confidence)]]
 
         pred_x = self._last_ball_center[0] + self._last_ball_velocity[0]
         pred_y = self._last_ball_center[1] + self._last_ball_velocity[1]
+        
+        # Radio dinámico basado en la edad de la pérdida
         radius = min(
             BALL_MAX_SEARCH_RADIUS_PX,
             BALL_SEARCH_RADIUS_PX + self._ball_age * BALL_SEARCH_GROWTH_PX,
@@ -147,12 +167,18 @@ class SegmentationEngine:
         for i in range(len(det)):
             cx, cy = cv_utils.center(det.xyxy[i])
             distance = np.hypot(cx - pred_x, cy - pred_y)
+            
+            # Penalización suave por distancia y recompensa por confianza
+            # Usamos un peso de 30.0 para la confianza para darle prioridad
+            score = distance - (float(det.confidence[i]) * 30.0)
+            
             if distance <= radius:
-                confidence = float(det.confidence[i]) if det.confidence is not None else 0.0
-                scored.append((distance - confidence * 20.0, i))
+                scored.append((score, i))
 
         if not scored:
-            return sv.Detections.empty()
+            # Si ninguna está en el radio pero hay candidatos, 
+            # devolvemos el de mayor confianza como último recurso
+            return det[[np.argmax(det.confidence)]]
 
         best_idx = min(scored, key=lambda item: item[0])[1]
         return det[np.array([best_idx])]

@@ -121,4 +121,7 @@ class HomographyEngine:
         metric_array = cv2.perspectiveTransform(pixel_array, self.H)
         mx, my = metric_array[0][0]
         
-        return Point2D(x=float(mx), y=float(my), is_metric=True)
+        # Invertir el eje Y para corregir la inversión vertical
+        inverted_my = self.field_height_cm - my
+        
+        return Point2D(x=float(mx), y=float(inverted_my), is_metric=True)
