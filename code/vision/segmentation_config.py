@@ -1,0 +1,48 @@
+CLASS_ROBOT = 0
+CLASS_BALL = 1
+CLASS_FIELD = 2
+
+CONF_THRESHOLD = 0.25
+MAX_ROBOTS = 4
+MAX_BALL_AGE = 10
+MAX_ROBOT_AGE = 12
+NMS_IOU_BALL = 0.0
+FIELD_CACHE_EVERY = 30
+
+ROBOT_TEMPORAL_GATE_PX = 120.0
+ROBOT_TEMPORAL_IOU_GATE = 0.08
+ROBOT_TEMPORAL_MIN_AREA_RATIO = 0.45
+ROBOT_TEMPORAL_MAX_AREA_RATIO = 2.4
+ROBOT_ROI_SIZE_PX = 320
+ROBOT_ROI_INFER_SIZE_PX = 640
+
+BALL_ROI_SIZE_PX = 256
+BALL_ROI_INFER_SIZE_PX = 640
+BALL_SEARCH_RADIUS_PX = 80.0
+BALL_SEARCH_GROWTH_PX = 15.0
+BALL_MAX_SEARCH_RADIUS_PX = 200.0
+BALL_RECOVERY_AFTER_FRAMES = MAX_BALL_AGE + 1
+BALL_CONFIDENCE_WEIGHT = 90.0
+BALL_ORANGE_WEIGHT = 70.0
+BALL_DISTANCE_WEIGHT = 0.85
+BALL_RECENT_REJECT_MARGIN_PX = 30.0
+
+TEXT_PROMPTS = [
+    "small wheeled soccer robot on green field",
+    "small bright orange circular ball on green floor, vivid saturated orange dot, overhead view",
+    "flat green soccer field surface",
+]
+
+ROI_BALL_PROMPTS = [
+    "bright orange ball",
+    "small orange circular ball",
+    "orange soccer ball",
+    "vivid orange dot",
+]
+
+ROI_ROBOT_PROMPTS = [
+    "wheeled soccer robot",
+    "small soccer robot",
+    "robot on green soccer field",
+    "round wheeled robot",
+]
