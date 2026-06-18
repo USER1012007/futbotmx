@@ -48,9 +48,11 @@ def _read_tracking() -> dict[int, dict]:
 
 
 def _pick_frame_ids(records: dict[int, dict]) -> list[int]:
-    ordered = sorted(records)
+    # Actual frames in video: 254
+    max_frame = 250 
+    ordered = [f for f in sorted(records) if f <= max_frame]
     sampled = set(ordered[::20])
-    sampled.update({0, 1, 2, 32, 60, 90, 120, 150, 180, 210, 253})
+    sampled.update({0, 1, 2, 32, 60, 90, 120, 150, 180, 210, 240})
 
     jumps: list[tuple[float, int]] = []
     previous = None

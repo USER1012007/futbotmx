@@ -442,11 +442,11 @@ class TacticalMapRenderer:
         angle = getattr(robot, "angle", 0.0) or 0.0
         if self.style.mirror_x:
             angle = math.pi - angle
-        direction = (
-            int(round(point[0] + np.cos(angle) * self._px(self.style.robot_direction_len_px))),
-            int(round(point[1] + np.sin(angle) * self._px(self.style.robot_direction_len_px))),
-        )
-        cv2.arrowedLine(canvas, point, direction, self.style.text_bgr, 1, cv2.LINE_AA, tipLength=self.style.arrow_tip_length)
+        # direction = (
+        #     int(round(point[0] + np.cos(angle) * self._px(self.style.robot_direction_len_px))),
+        #     int(round(point[1] + np.sin(angle) * self._px(self.style.robot_direction_len_px))),
+        # )
+        # cv2.arrowedLine(canvas, point, direction, self.style.text_bgr, 1, cv2.LINE_AA, tipLength=self.style.arrow_tip_length)
         ox, oy = self.style.robot_label_offset_px
         cv2.putText(
             canvas,
@@ -473,7 +473,7 @@ class TacticalMapRenderer:
                 int(round(point[0] + dx * self._px(self.style.ball_direction_len_px))),
                 int(round(point[1] + dy * self._px(self.style.ball_direction_len_px))),
             )
-            cv2.arrowedLine(canvas, point, end, self.style.ball_bgr, 1, cv2.LINE_AA, tipLength=self.style.arrow_tip_length)
+            # cv2.arrowedLine(canvas, point, end, self.style.ball_bgr, 1, cv2.LINE_AA, tipLength=self.style.arrow_tip_length)
 
     def _draw_events(
         self,
@@ -551,15 +551,15 @@ class TacticalMapRenderer:
         start = self._to_canvas_point(p1.x, p1.y)
         end = self._to_canvas_point(p2.x, p2.y)
 
-        cv2.arrowedLine(
-            canvas,
-            start,
-            end,
-            color,
-            self._px(2),
-            cv2.LINE_AA,
-            tipLength=self.style.arrow_tip_length,
-        )
+        # cv2.arrowedLine(
+        #     canvas,
+        #     start,
+        #     end,
+        #     color,
+        #     self._px(2),
+        #     cv2.LINE_AA,
+        #     tipLength=self.style.arrow_tip_length,
+        # )
 
 
     def _draw_event_marker(
