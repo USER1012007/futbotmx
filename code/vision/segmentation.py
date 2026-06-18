@@ -18,6 +18,8 @@ MAX_BALL_AGE     = 10
 MAX_ROBOT_AGE    = 12
 NMS_IOU_BALL     = 0.0
 FIELD_CACHE_EVERY = 30
+ROBOT_ROI_SIZE_PX = 320
+ROBOT_ROI_INFER_SIZE_PX = 640
 BALL_ROI_SIZE_PX = 256
 BALL_ROI_INFER_SIZE_PX = 640
 BALL_SEARCH_RADIUS_PX = 80.0
@@ -40,6 +42,13 @@ ROI_BALL_PROMPTS = [
     "small orange circular ball",
     "orange soccer ball",
     "vivid orange dot",
+]
+
+ROI_ROBOT_PROMPTS = [
+    "wheeled soccer robot",
+    "small soccer robot",
+    "robot on green soccer field",
+    "round wheeled robot",
 ]
 
 # ── Motor ────────────────────────────────────────────────────────────────────
@@ -362,6 +371,7 @@ class SegmentationEngine:
             offset=(x1, y1),
             roi_size=(crop_w, crop_h),
             infer_size=(BALL_ROI_INFER_SIZE_PX, BALL_ROI_INFER_SIZE_PX),
+            class_id=CLASS_BALL,
         )
 
         hsv_dets = ball_utils.hsv_ball_fallback(
@@ -381,6 +391,88 @@ class SegmentationEngine:
 
         return self._combine_detections([roi_dets, hsv_dets, template_dets]), (x1, y1, x2, y2)
 
+    def _infer_missing_robot_rois(self, frame: np.ndarray, fresh: sv.Detections) -> sv.Detections:
+        if self._robot_cache is None or len(self._robot_cache) == 0:
+            return sv.Detections.empty()
+
+        roi_detections = []
+        for i in range(len(self._robot_cache)):
+            cached_box = self._robot_cache.xyxy[i]
+            if self._robot_already_detected(cached_box, fresh):
+                continue
+
+            center = cv_utils.center(cached_box)
+            x1, y1, x2, y2 = self._roi_bounds(
+                frame.shape[1],
+                frame.shape[0],
+                center,
+                ROBOT_ROI_SIZE_PX,
+            )
+            crop = frame[y1:y2, x1:x2]
+            if crop.size == 0:
+                continue
+
+            crop_h, crop_w = crop.shape[:2]
+            sam_crop = cv2.resize(
+                crop,
+                (ROBOT_ROI_INFER_SIZE_PX, ROBOT_ROI_INFER_SIZE_PX),
+                interpolation=cv2.INTER_CUBIC,
+            )
+            self.predictor.set_image(sam_crop)
+            roi_results = self.predictor(text=ROI_ROBOT_PROMPTS)[0]
+            roi_dets = sv.Detections.from_ultralytics(roi_results)
+            roi_dets = self._scale_roi_detections_to_frame(
+                roi_dets,
+                offset=(x1, y1),
+                roi_size=(crop_w, crop_h),
+                infer_size=(ROBOT_ROI_INFER_SIZE_PX, ROBOT_ROI_INFER_SIZE_PX),
+                class_id=CLASS_ROBOT,
+            )
+            roi_dets = roi_dets[roi_dets.confidence > CONF_THRESHOLD] if len(roi_dets) > 0 else roi_dets
+            roi_dets = self._filter_robot_roi_candidates(roi_dets, cached_box)
+            if len(roi_dets) > 0:
+                roi_detections.append(roi_dets)
+
+        return self._combine_detections(roi_detections)
+
+    @staticmethod
+    def _robot_already_detected(cached_box: np.ndarray, fresh: sv.Detections) -> bool:
+        if len(fresh) == 0:
+            return False
+
+        cached_center = cv_utils.center(cached_box)
+        for i in range(len(fresh)):
+            if cv_utils.iou(cached_box, fresh.xyxy[i]) > 0.2:
+                return True
+            fresh_center = cv_utils.center(fresh.xyxy[i])
+            if np.hypot(cached_center[0] - fresh_center[0], cached_center[1] - fresh_center[1]) < 90.0:
+                return True
+        return False
+
+    @staticmethod
+    def _filter_robot_roi_candidates(det: sv.Detections, cached_box: np.ndarray) -> sv.Detections:
+        if len(det) == 0:
+            return det
+
+        cached_area = max(1.0, (cached_box[2] - cached_box[0]) * (cached_box[3] - cached_box[1]))
+        cached_center = cv_utils.center(cached_box)
+        keep = []
+        for i in range(len(det)):
+            box = det.xyxy[i]
+            area = max(1.0, (box[2] - box[0]) * (box[3] - box[1]))
+            ratio = area / cached_area
+            center = cv_utils.center(box)
+            distance = np.hypot(center[0] - cached_center[0], center[1] - cached_center[1])
+            if 0.35 <= ratio <= 2.8 and distance <= ROBOT_ROI_SIZE_PX * 0.45:
+                keep.append(i)
+
+        if not keep:
+            return sv.Detections.empty()
+
+        kept = det[np.array(keep)]
+        best = int(np.argmax(kept.confidence)) if len(kept) > 1 else 0
+        return kept[np.array([best])]
+
     @staticmethod
     def _scale_roi_detections_to_frame(
         det: sv.Detections,
@@ -388,6 +480,7 @@ class SegmentationEngine:
         offset: tuple[int, int],
         roi_size: tuple[int, int],
         infer_size: tuple[int, int],
+        class_id: int,
     ) -> sv.Detections:
         if len(det) == 0:
             return det
@@ -403,7 +496,7 @@ class SegmentationEngine:
         return sv.Detections(
             xyxy=xyxy,
             confidence=det.confidence,
-            class_id=np.full(len(det), CLASS_BALL, dtype=int),
+            class_id=np.full(len(det), class_id, dtype=int),
         )
 
     @staticmethod
@@ -411,6 +504,7 @@ class SegmentationEngine:
         det: sv.Detections,
         *,
         offset: tuple[int, int],
+        class_id: int = CLASS_BALL,
     ) -> sv.Detections:
         if len(det) == 0:
             return det
@@ -421,7 +515,7 @@ class SegmentationEngine:
         return sv.Detections(
             xyxy=xyxy,
             confidence=det.confidence,
-            class_id=np.full(len(det), CLASS_BALL, dtype=int),
+            class_id=np.full(len(det), class_id, dtype=int),
         )
 
     @staticmethod
@@ -460,6 +554,14 @@ class SegmentationEngine:
         # Campo (cacheado). La mascara tambien ayuda a descartar manos/fondo en HSV.
         if self.frame_counter % FIELD_CACHE_EVERY == 0 or self.cached_field_mask is None:
             self.cached_field_mask = _build_field_mask(field_fresh, self.cached_field_mask)
+
+        if len(robots_fresh) < MAX_ROBOTS and self._robot_cache is not None and self._robot_age <= MAX_ROBOT_AGE:
+            robot_roi_fresh = self._infer_missing_robot_rois(frame, robots_fresh)
+            robots_fresh = self._combine_detections([robots_fresh, robot_roi_fresh])
+            robots_fresh = cv_utils.nms_detections(robots_fresh, 0.35)
+            if len(robots_fresh) > MAX_ROBOTS:
+                top = np.argsort(-robots_fresh.confidence)[:MAX_ROBOTS]
+                robots_fresh = robots_fresh[top]
 
         # Persistencia por clase
         robots_fresh = self.robot_tracker.update(robots_fresh) if len(robots_fresh) > 0 else sv.Detections.empty()
