@@ -11,6 +11,7 @@ from vision.segmentation_config import (
     BALL_DISTANCE_WEIGHT,
     BALL_GLOBAL_REACQUIRE_AFTER_FRAMES,
     BALL_GLOBAL_REACQUIRE_EVERY_FRAMES,
+    BALL_GLOBAL_REACQUIRE_MAX_DISTANCE_PX,
     BALL_GLOBAL_REACQUIRE_MIN_CIRCULARITY,
     BALL_GLOBAL_REACQUIRE_MIN_FIELD_RATIO,
     BALL_GLOBAL_REACQUIRE_MIN_ORANGE_RATIO,
@@ -42,7 +43,7 @@ class SegmentationEngine:
             mode="predict",
             model=model_path,
             device="cuda",
-            imgsz=640,
+            imgsz=cfg.SAM_IMAGE_SIZE,
         )
         self.predictor = SAM3SemanticPredictor(overrides=overrides)
         self.cfg = cfg
@@ -227,11 +228,7 @@ class SegmentationEngine:
         state = self._ball_state()
         predicted = self._predicted_ball_center()
         radius = self._search_radius()
-        locked_to_recent_track = (
-            predicted is not None
-            and state in {"locked", "lost"}
-            and not allow_global_reacquisition
-        )
+        locked_to_recent_track = predicted is not None and not allow_global_reacquisition
 
         scored = []
         for i in range(len(det)):
@@ -263,6 +260,12 @@ class SegmentationEngine:
                 orange_ratio < BALL_GLOBAL_REACQUIRE_MIN_ORANGE_RATIO
                 or circularity < BALL_GLOBAL_REACQUIRE_MIN_CIRCULARITY
                 or not ball_utils.center_on_field_for_box(det.xyxy[i], self.cached_field_mask, frame.shape)
+            ):
+                continue
+            if (
+                allow_global_reacquisition
+                and predicted is not None
+                and distance > BALL_GLOBAL_REACQUIRE_MAX_DISTANCE_PX
             ):
                 continue
             if locked_to_recent_track and distance > radius + BALL_RECENT_REJECT_MARGIN_PX:
