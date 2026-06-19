@@ -20,7 +20,14 @@ El sistema rastrea:
 
 Vista previa del tracking y dashboard final:
 
-![Demo de FutBotMX Vision](code/data/outputs/tracking_visualization.gif)
+![Demo de FutBotMX Visión](code/data/videos/tracking_visualization.gif)
+
+## Videos Generados
+
+- [Video de maximo 2 minutos](https://drive.google.com/drive/folders/1TNCWizLij_BP07X8GqfHIHY3uKX7xMMg?usp=sharing):
+  se aprecia un partido de futbol robótico con descripción en voz.
+- [Reel de Instagram](https://www.instagram.com/reel/DZyUy8qJg_0/?igsh=MTdwN2N3djdsZ3Ezaw==): reel de mínimo 30 segundos en el
+  que se aprecia el resultado.
 
 ## Inicio Rápido
 
@@ -314,8 +321,12 @@ python3 tools/diagnose_hsv_ball_candidates.py --help
 - Video final de visualización con dashboard.
 - Documentacion open source en este README.
 - Licencia y créditos de terceros en `LICENSE` y `CREDITOS_LICENCIAS.md`.
-- Video demo: `TODO: agregar enlace final`.
-- Reel de Instagram: `TODO: agregar enlace publico`.
+- Video demo y reel documentados en la seccion Videos Generados.
+
+## Integrantes
+
+- García Norrigan Luis Darío
+- Rojas Badillo Emilio
 
 ## Créditos
 
