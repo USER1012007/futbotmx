@@ -18,6 +18,9 @@ from domain.events import (
 from domain.stats import PossessionPct, Score, Statistics
 from infra.event_bus import EventBus
 
+ROBOT_DISTANCE_DEADBAND_CM = 4.0
+ROBOT_MAX_DISTANCE_SPEED_CM_S = 250.0
+
 
 class StatsEngine:
     def __init__(self, event_bus: Optional[EventBus] = None) -> None:
@@ -27,6 +30,8 @@ class StatsEngine:
         self._frames_rival_possession = 0
         self._distance_cm: Dict[str, float] = {"allies": 0.0, "rivals": 0.0}
         self._prev_positions: Dict[str, Tuple[float, float]] = {}
+        self._prev_position_frames: Dict[str, int] = {}
+        self._distance_anchor_positions: Dict[str, Tuple[float, float]] = {}
         self._event_counts: Dict[str, int] = {}
         self._passes_attempted = 0
         self._passes_successful = 0
@@ -107,24 +112,38 @@ class StatsEngine:
 
     def _update_distances(self, frame_result: FrameResult) -> None:
         current_positions: Dict[str, Tuple[float, float]] = {}
+        current_frames: Dict[str, int] = {}
         for robot in frame_result.robots:
             position = self._position(robot)
             if position is None:
                 continue
 
-            current_positions[robot.id] = position
             previous_position = self._prev_positions.get(robot.id)
             if previous_position is None:
+                current_positions[robot.id] = position
+                current_frames[robot.id] = frame_result.frame_id
                 self._distance_cm.setdefault(robot.id, 0.0)
+                self._distance_anchor_positions[robot.id] = position
                 continue
 
-            distance = hypot(position[0] - previous_position[0], position[1] - previous_position[1])
+            if self._is_implausible_distance_step(robot.id, position, frame_result.frame_id):
+                current_positions[robot.id] = previous_position
+                current_frames[robot.id] = self._prev_position_frames.get(robot.id, frame_result.frame_id)
+                continue
+
+            current_positions[robot.id] = position
+            current_frames[robot.id] = frame_result.frame_id
+            distance = self._distance_from_anchor(robot.id, position)
+            if distance <= 0.0:
+                continue
+
             self._distance_cm[robot.id] = self._distance_cm.get(robot.id, 0.0) + distance
             team_key = self._team_key(robot)
             if team_key is not None:
                 self._distance_cm[team_key] = self._distance_cm.get(team_key, 0.0) + distance
 
         self._prev_positions = current_positions
+        self._prev_position_frames = current_frames
 
     def _update_speeds(self, frame_result: FrameResult) -> None:
         for robot in frame_result.robots:
@@ -168,6 +187,36 @@ class StatsEngine:
         if metric is not None:
             return (float(metric.x), float(metric.y))
         return None
+
+    def _distance_from_anchor(self, robot_id: str, position: Tuple[float, float]) -> float:
+        anchor = self._distance_anchor_positions.get(robot_id)
+        if anchor is None:
+            self._distance_anchor_positions[robot_id] = position
+            return 0.0
+
+        distance = hypot(position[0] - anchor[0], position[1] - anchor[1])
+        if distance < ROBOT_DISTANCE_DEADBAND_CM:
+            return 0.0
+
+        self._distance_anchor_positions[robot_id] = position
+        return distance
+
+    def _is_implausible_distance_step(
+        self,
+        robot_id: str,
+        position: Tuple[float, float],
+        frame_id: int,
+    ) -> bool:
+        previous_position = self._prev_positions.get(robot_id)
+        previous_frame = self._prev_position_frames.get(robot_id)
+        if previous_position is None or previous_frame is None:
+            return False
+
+        frame_delta = max(1, frame_id - previous_frame)
+        dt = frame_delta / 30.0
+        distance = hypot(position[0] - previous_position[0], position[1] - previous_position[1])
+        speed = distance / max(dt, 1e-6)
+        return speed > ROBOT_MAX_DISTANCE_SPEED_CM_S
 
     @staticmethod
     def _team_key(robot: Robot) -> Optional[str]:
