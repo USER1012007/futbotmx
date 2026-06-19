@@ -22,14 +22,6 @@ Vista previa del tracking y dashboard final:
 
 ![Demo de FutBotMX Vision](code/data/outputs/tracking_visualization.gif)
 
-Si el GIF todavia no existe, generarlo a partir del video renderizado:
-
-```bash
-ffmpeg -i code/data/outputs/tracking_visualization.mp4 \
-  -vf "fps=12,scale=960:-1:flags=lanczos" \
-  code/data/outputs/tracking_visualization.gif
-```
-
 ## Inicio Rápido
 
 ### 1. Clonar
