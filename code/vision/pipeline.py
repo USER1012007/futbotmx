@@ -40,12 +40,6 @@ class Pipeline:
             # 1. Segmentación
             result = self.segmentation.process_frame(frame, frame_id)
             
-            # Suavizado de posiciones en espacio pixel
-            for robot in result.robots:
-                robot.position_pixel = self.smoother.smooth(robot.id, robot.position_pixel)
-            if result.ball:
-                result.ball.position_pixel = self.smoother.smooth(result.ball.id, result.ball.position_pixel)
-            
             # 2. Detección de Porterías y Homografía
             yellow_goal, blue_goal = self.goal_detector.get_goal_positions(frame)
             if result.field_mask is not None:
@@ -60,6 +54,17 @@ class Pipeline:
 
             result.timestamp_s = frame_id / self._fps if self._fps else None
             self.team_assigner.assign(result, frame)
+
+            # Suavizado con IDs estables. Después de suavizar píxeles, reproyectamos
+            # para que las métricas correspondan a la posición final escrita.
+            for robot in result.robots:
+                robot.position_pixel = self.smoother.smooth(robot.id, robot.position_pixel)
+                if self.homography.H is not None:
+                    robot.position_metric = self.homography.project_point(robot.position_pixel)
+            if result.ball:
+                result.ball.position_pixel = self.smoother.smooth(result.ball.id, result.ball.position_pixel)
+                if self.homography.H is not None:
+                    result.ball.position_metric = self.homography.project_point(result.ball.position_pixel)
             self.ball_stabilizer.stabilize(result)
             
             # 4. Publicar evento y persistencia
