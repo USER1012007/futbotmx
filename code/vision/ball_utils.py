@@ -40,6 +40,8 @@ def _center(xyxy: np.ndarray):
 
 def _orange_mask(frame: np.ndarray) -> np.ndarray:
     """Máscara HSV triple-banda para naranja robusto."""
+    if frame is None or frame.size == 0:
+        return np.zeros((0, 0), dtype=np.uint8)
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     m1 = cv2.inRange(hsv, _HSV_ORANGE_LO1, _HSV_ORANGE_HI1)
     m2 = cv2.inRange(hsv, _HSV_ORANGE_LO2, _HSV_ORANGE_HI2)
@@ -104,6 +106,8 @@ def filter_ball_by_aspect_ratio(det: sv.Detections) -> sv.Detections:
 def filter_ball_by_orange_support(det: sv.Detections, frame: np.ndarray) -> sv.Detections:
     if len(det) == 0:
         return det
+    if frame is None or frame.size == 0:
+        return sv.Detections.empty()
     orange_mask = _orange_mask(frame)
     keep = []
     for i in range(len(det)):
@@ -175,6 +179,8 @@ def filter_ball_by_field_context(
 
 def orange_ratio_for_box(xyxy: np.ndarray, frame: np.ndarray) -> float:
     """Devuelve fracción de píxeles naranja dentro del bounding box."""
+    if frame is None or frame.size == 0:
+        return 0.0
     orange_mask = _orange_mask(frame)
     x0, y0, x1, y1 = _clip_box(xyxy, frame.shape[1], frame.shape[0])
     if x1 <= x0 or y1 <= y0:
@@ -184,6 +190,8 @@ def orange_ratio_for_box(xyxy: np.ndarray, frame: np.ndarray) -> float:
 
 
 def orange_signature_for_box(xyxy: np.ndarray, frame: np.ndarray) -> dict[str, float]:
+    if frame is None or frame.size == 0:
+        return {"orange_pixels": 0.0, "orange_ratio": 0.0, "circularity": 0.0}
     orange_mask = _orange_mask(frame)
     x0, y0, x1, y1 = _clip_box(xyxy, frame.shape[1], frame.shape[0])
     if x1 <= x0 or y1 <= y0:
@@ -257,7 +265,12 @@ def hsv_ball_fallback(
     robot_boxes: np.ndarray | None = None,
     max_candidates: int = 1,
 ) -> sv.Detections:
+    if frame is None or frame.size == 0:
+        return sv.Detections.empty()
+
     mask = _orange_mask(frame)
+    if mask.size == 0:
+        return sv.Detections.empty()
 
     if field_mask is not None:
         fm = _normalized_field_mask(field_mask, mask.shape[1], mask.shape[0])
@@ -323,6 +336,9 @@ def template_match_ball(
     if template_sizes is None:
         template_sizes = [8, 12, 16, 20, 26]
 
+    if frame is None or frame.size == 0:
+        return sv.Detections.empty()
+
     # Región de búsqueda
     h, w = frame.shape[:2]
     if search_center is not None:
@@ -331,11 +347,16 @@ def template_match_ball(
         y0 = max(0, int(cy - search_radius))
         x1 = min(w, int(cx + search_radius))
         y1 = min(h, int(cy + search_radius))
+        if x1 <= x0 or y1 <= y0:
+            return sv.Detections.empty()
         roi_frame = frame[y0:y1, x0:x1]
         offset    = (x0, y0)
     else:
         roi_frame = frame
         offset    = (0, 0)
+
+    if roi_frame.size == 0:
+        return sv.Detections.empty()
 
     if field_mask is not None:
         fm = (field_mask * 255).astype(np.uint8) if field_mask.max() <= 1 else field_mask
@@ -347,6 +368,8 @@ def template_match_ball(
 
     # Canal naranja para matching
     orange_mask_roi = _orange_mask(roi_frame)
+    if orange_mask_roi.size == 0:
+        return sv.Detections.empty()
     if roi_fm is not None:
         orange_mask_roi = cv2.bitwise_and(orange_mask_roi, roi_fm)
 
