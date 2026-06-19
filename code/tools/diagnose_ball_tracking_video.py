@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import sys
 from pathlib import Path
+from typing import Literal
 
-import cv2
-import numpy as np
+cv2 = None
+np = None
 
 
 CODE_DIR = Path(__file__).resolve().parents[1]
@@ -17,28 +19,51 @@ if str(CODE_DIR) not in sys.path:
 from infra.configs import Config
 
 
-SOURCE_VIDEO_PATH = Config.VIDEO_DIR / "video1.mp4"
-TRACKING_PATH = Config.TRACKING_DIR / "tracking.jsonl"
-OUTPUT_DIR = Config.OUTPUT_DIR / "ball_tracking_diagnostics"
+Rotation = Literal["clockwise", "counterclockwise", "none"]
 VIDEO_PANEL_SIZE = (1024, 450)
-ROTATION = "clockwise"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Create visual diagnostics for tracked ball positions.")
+    parser.add_argument("--video", type=Path, default=Config.VIDEO_DIR / "video1.mp4", help="Source video path.")
+    parser.add_argument("--tracking", type=Path, default=Config.TRACKING_DIR / "tracking.jsonl", help="Tracking JSONL path.")
+    parser.add_argument("--output-dir", type=Path, default=Config.OUTPUT_DIR / "ball_tracking_diagnostics", help="Output directory.")
+    parser.add_argument("--rotation", choices=("clockwise", "counterclockwise", "none"), default="clockwise", help="Video rotation for diagnostics.")
+    return parser.parse_args()
 
 
 def main() -> None:
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    records = _read_tracking()
+    args = parse_args()
+    _load_cv_modules()
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    records = _read_tracking(args.tracking)
     frame_ids = _pick_frame_ids(records)
-    panels = [_render_panel(frame_id, records[frame_id]) for frame_id in frame_ids if frame_id in records]
-    _write_sheet(panels, OUTPUT_DIR / "ball_detection_sheet.png", columns=2)
-    _write_jump_report(records, OUTPUT_DIR / "ball_jump_report.txt")
-    print(f"OK sheet: {OUTPUT_DIR / 'ball_detection_sheet.png'}")
-    print(f"OK report: {OUTPUT_DIR / 'ball_jump_report.txt'}")
+    panels = [
+        _render_panel(frame_id, records[frame_id], args.video, args.rotation)
+        for frame_id in frame_ids
+        if frame_id in records
+    ]
+    _write_sheet(panels, args.output_dir / "ball_detection_sheet.png", columns=2)
+    _write_jump_report(records, args.output_dir / "ball_jump_report.txt")
+    print(f"OK sheet: {args.output_dir / 'ball_detection_sheet.png'}")
+    print(f"OK report: {args.output_dir / 'ball_jump_report.txt'}")
     print(f"frames: {frame_ids}")
 
 
-def _read_tracking() -> dict[int, dict]:
+def _load_cv_modules() -> None:
+    global cv2, np
+    if cv2 is not None and np is not None:
+        return
+    import cv2 as cv2_module
+    import numpy as np_module
+
+    cv2 = cv2_module
+    np = np_module
+
+
+def _read_tracking(tracking_path: Path) -> dict[int, dict]:
     records: dict[int, dict] = {}
-    for line in TRACKING_PATH.read_text(encoding="utf-8").splitlines():
+    for line in tracking_path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         raw = json.loads(line)
@@ -48,11 +73,9 @@ def _read_tracking() -> dict[int, dict]:
 
 
 def _pick_frame_ids(records: dict[int, dict]) -> list[int]:
-    # Actual frames in video: 254
-    max_frame = 250 
-    ordered = [f for f in sorted(records) if f <= max_frame]
+    ordered = sorted(records)
     sampled = set(ordered[::20])
-    sampled.update({0, 1, 2, 32, 60, 90, 120, 150, 180, 210, 240})
+    sampled.update({0, 1, 2, 32, 60, 90, 120, 150, 180, 210, 253})
 
     jumps: list[tuple[float, int]] = []
     previous = None
@@ -72,27 +95,25 @@ def _pick_frame_ids(records: dict[int, dict]) -> list[int]:
 
     for _, frame_id in sorted(jumps, reverse=True)[:12]:
         sampled.update({max(0, frame_id - 1), frame_id, frame_id + 1})
-
     return [frame_id for frame_id in sorted(sampled) if frame_id in records]
 
 
-def _render_panel(frame_id: int, record: dict) -> np.ndarray:
-    frame, transform = _read_video_frame(frame_id)
+def _render_panel(frame_id: int, record: dict, video_path: Path, rotation: Rotation) -> np.ndarray:
+    frame, transform = _read_video_frame(frame_id, video_path, rotation)
     ball = record.get("ball")
     robots = record.get("robots", [])
 
     if ball:
-        ball_point = _transform_point(ball["position_pixel"], transform)
+        ball_point = _transform_point(ball["position_pixel"], transform, rotation)
         _draw_crosshair(frame, ball_point, (0, 149, 255))
         cv2.putText(frame, "tracked", (ball_point[0] + 14, ball_point[1] + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
 
     for robot in robots:
-        point = _transform_point(robot["position_pixel"], transform)
+        point = _transform_point(robot["position_pixel"], transform, rotation)
         cv2.circle(frame, point, 16, (60, 35, 239) if robot.get("team_id") == "rivals" else (216, 180, 0), 2, cv2.LINE_AA)
         cv2.putText(frame, robot.get("id", "R"), (point[0] + 18, point[1] + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
 
     cv2.putText(frame, f"Frame {frame_id}", (14, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
-
     if not ball:
         return frame
 
@@ -104,19 +125,10 @@ def _render_panel(frame_id: int, record: dict) -> np.ndarray:
     return panel
 
 
-def _draw_crosshair(frame: np.ndarray, point: tuple[int, int], color: tuple[int, int, int]) -> None:
-    x, y = point
-    cv2.circle(frame, point, 8, color, 2, cv2.LINE_AA)
-    cv2.line(frame, (x - 18, y), (x - 10, y), color, 2, cv2.LINE_AA)
-    cv2.line(frame, (x + 10, y), (x + 18, y), color, 2, cv2.LINE_AA)
-    cv2.line(frame, (x, y - 18), (x, y - 10), color, 2, cv2.LINE_AA)
-    cv2.line(frame, (x, y + 10), (x, y + 18), color, 2, cv2.LINE_AA)
-
-
-def _read_video_frame(frame_id: int) -> tuple[np.ndarray, dict]:
-    cap = cv2.VideoCapture(str(SOURCE_VIDEO_PATH))
+def _read_video_frame(frame_id: int, video_path: Path, rotation: Rotation) -> tuple[np.ndarray, dict]:
+    cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
-        raise RuntimeError(f"Could not open {SOURCE_VIDEO_PATH}")
+        raise RuntimeError(f"Could not open {video_path}")
     cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_id))
     ok, frame = cap.read()
     cap.release()
@@ -124,9 +136,9 @@ def _read_video_frame(frame_id: int) -> tuple[np.ndarray, dict]:
         raise RuntimeError(f"Could not read frame {frame_id}")
 
     source_h, source_w = frame.shape[:2]
-    if ROTATION == "clockwise":
+    if rotation == "clockwise":
         frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-    elif ROTATION == "counterclockwise":
+    elif rotation == "counterclockwise":
         frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
     target_w, target_h = VIDEO_PANEL_SIZE
@@ -138,25 +150,28 @@ def _read_video_frame(frame_id: int) -> tuple[np.ndarray, dict]:
     offset_y = (target_h - resized_h) // 2
     rendered = np.full((target_h, target_w, 3), (14, 18, 24), dtype=np.uint8)
     rendered[offset_y : offset_y + resized_h, offset_x : offset_x + resized_w] = cv2.resize(frame, (resized_w, resized_h), interpolation=cv2.INTER_AREA)
-    return rendered, {
-        "source_w": source_w,
-        "source_h": source_h,
-        "scale": scale,
-        "offset_x": offset_x,
-        "offset_y": offset_y,
-    }
+    return rendered, {"source_w": source_w, "source_h": source_h, "scale": scale, "offset_x": offset_x, "offset_y": offset_y}
 
 
-def _transform_point(point: dict, transform: dict) -> tuple[int, int]:
+def _transform_point(point: dict, transform: dict, rotation: Rotation) -> tuple[int, int]:
     x = float(point["x"])
     y = float(point["y"])
-    if ROTATION == "clockwise":
+    if rotation == "clockwise":
         x, y = transform["source_h"] - 1.0 - y, x
-    elif ROTATION == "counterclockwise":
+    elif rotation == "counterclockwise":
         x, y = y, transform["source_w"] - 1.0 - x
     x = transform["offset_x"] + x * transform["scale"]
     y = transform["offset_y"] + y * transform["scale"]
     return int(round(x)), int(round(y))
+
+
+def _draw_crosshair(frame: np.ndarray, point: tuple[int, int], color: tuple[int, int, int]) -> None:
+    x, y = point
+    cv2.circle(frame, point, 8, color, 2, cv2.LINE_AA)
+    cv2.line(frame, (x - 18, y), (x - 10, y), color, 2, cv2.LINE_AA)
+    cv2.line(frame, (x + 10, y), (x + 18, y), color, 2, cv2.LINE_AA)
+    cv2.line(frame, (x, y - 18), (x, y - 10), color, 2, cv2.LINE_AA)
+    cv2.line(frame, (x, y + 10), (x, y + 18), color, 2, cv2.LINE_AA)
 
 
 def _crop_around(frame: np.ndarray, center: tuple[int, int], size: int) -> np.ndarray:

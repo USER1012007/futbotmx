@@ -1,15 +1,18 @@
 name: futbotmx
 channels:
-  - conda-forge
   - pytorch
+  - nvidia
+  - conda-forge
 dependencies:
   - python=3.10
   - numpy
   - opencv
   - pytorch
   - torchvision
+  - pytorch-cuda=12.1
   - pip
   - pip:
     - supervision
     - ultralytics
-    - bytetracker
+    - trackers
+    - pytest

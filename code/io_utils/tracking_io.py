@@ -14,6 +14,11 @@ class TrackingIO:
         with open(self.file_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
 
+    def save_metadata(self, metadata: Dict[str, Any]) -> None:
+        entry = {"type": "metadata", "metadata": metadata}
+        with open(self.file_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+
     def reset(self) -> None:
         with open(self.file_path, "w", encoding="utf-8"):
             pass
@@ -27,11 +32,29 @@ class TrackingIO:
             for line in f:
                 stripped = line.strip()
                 if stripped:
-                    results.append(json.loads(stripped))
+                    row = json.loads(stripped)
+                    if row.get("type") == "metadata":
+                        continue
+                    results.append(row)
         return results
 
     def read_frame_results(self) -> List[FrameResult]:
         return [tracking_row_to_frame_result(row) for row in self.read_all()]
+
+    def read_metadata(self) -> Dict[str, Any]:
+        if not self.file_path.exists():
+            return {}
+
+        metadata: Dict[str, Any] = {}
+        with open(self.file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                row = json.loads(stripped)
+                if row.get("type") == "metadata" and isinstance(row.get("metadata"), dict):
+                    metadata.update(row["metadata"])
+        return metadata
 
 
 def tracking_row_to_frame_result(row: Dict[str, Any]) -> FrameResult:

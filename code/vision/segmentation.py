@@ -42,8 +42,8 @@ class SegmentationEngine:
             task="segment",
             mode="predict",
             model=model_path,
-            device="cuda",
-            imgsz=cfg.SAM_IMAGE_SIZE,
+            device=cfg.SAM_DEVICE,
+            imgsz=cfg.SAM_IMGSZ,
         )
         self.predictor = SAM3SemanticPredictor(overrides=overrides)
         self.cfg = cfg

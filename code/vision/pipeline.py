@@ -5,20 +5,24 @@ from vision.homography import HomographyEngine
 from vision.goal_detector import GoalDetector
 from vision.smoother import PositionSmoother
 from vision.team_assignment import BallMetricStabilizer, TeamAssigner
+from pathlib import Path
+
 from io_utils.tracking_io import TrackingIO
 from infra.configs import Config
 from infra.event_bus import EventBus
 
 
 class Pipeline:
-    def __init__(self, cfg: Config, video_path: str):
+    def __init__(self, cfg: Config, video_path: str | Path, tracking_path: str | Path | None = None, max_frames: int | None = None):
         self.cfg = cfg
+        self.video_path = Path(video_path)
+        self.max_frames = max_frames
         self.video_source = VideoSource(video_path)
         self.segmentation = SegmentationEngine(cfg)
         self.homography = HomographyEngine(cfg)
         self.goal_detector = GoalDetector()
         self.smoother = PositionSmoother(alpha=0.25)
-        self.tracking_io = TrackingIO(cfg.TRACKING_DIR / "tracking.jsonl")
+        self.tracking_io = TrackingIO(Path(tracking_path) if tracking_path is not None else cfg.TRACKING_DIR / "tracking.jsonl")
         self.event_bus = EventBus()
         self._fps = self._detect_fps()
         self.team_assigner = TeamAssigner()
@@ -31,8 +35,22 @@ class Pipeline:
 
     def run(self):
         self.tracking_io.reset()
+        self.tracking_io.save_metadata(
+            {
+                "video_name": self.video_path.name,
+                "video_path": str(self.video_path),
+                "frame_count": self.video_source.frame_count,
+                "fps": self._fps,
+                "max_frames": self.max_frames,
+                "sam_device": self.cfg.SAM_DEVICE,
+                "sam_imgsz": self.cfg.SAM_IMGSZ,
+            }
+        )
         frame_id = 0
         while True:
+            if self.max_frames is not None and frame_id >= self.max_frames:
+                break
+
             frame = self.video_source.get_frame()
             if frame is None:
                 break

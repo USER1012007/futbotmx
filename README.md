@@ -97,8 +97,12 @@ futbotmx/
 │   │   ├── videos/
 │   │   ├── tracking/
 │   │   └── outputs/
+│   ├── tools/
+│   │   ├── render_tracking_visualization.py
+│   │   ├── diagnose_ball_tracking_video.py
+│   │   └── diagnose_hsv_ball_candidates.py
 │   └── test/
-│       └── mock_tracking_visualization.py
+│       └── test_analysis_integration.py
 ├── docs/
 │   ├── doc.md
 │   └── Convocatoria_CopaFutBotMX-Meta-VF-20260429T020141.pdf
@@ -193,13 +197,47 @@ El modelo debe usarse conforme a la licencia publicada por Meta para SAM 3.
 
 ## Instalacion
 
-Desde la raiz del repositorio:
+Clonar el repositorio:
+
+```bash
+git clone <URL_DEL_REPOSITORIO>
+cd futbotmx
+```
+
+Crear el entorno desde la raiz del repositorio:
+
+```bash
+conda env create -f environment.yml
+conda activate futbotmx
+```
+
+Si el entorno ya existe:
+
+```bash
+conda env update -f environment.yml --prune
+conda activate futbotmx
+```
+
+Entrar al codigo:
 
 ```bash
 cd code
 ```
 
-Crear o activar un entorno Python 3.10 con las dependencias del proyecto.
+Colocar los pesos de SAM 3 en:
+
+```text
+code/sam3.pt
+```
+
+Colocar el video a procesar en:
+
+```text
+code/data/videos/
+```
+
+El nombre por defecto es `video1.mp4`, pero tambien se puede pasar otra ruta por
+CLI.
 
 Validar CUDA:
 
@@ -209,22 +247,32 @@ python3.10 -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.
 
 Si `torch.cuda.is_available()` devuelve `False`, SAM3 no correra en GPU.
 
+Validar que los entrypoints cargan:
+
+```bash
+python3 main.py --help
+python3 tools/render_tracking_visualization.py --help
+```
+
 ## Configuracion del video
 
-El video por defecto esta definido en:
+El video por defecto es `code/data/videos/video1.mp4`. Para procesar otro video,
+pasarlo por CLI desde `code/`:
 
-```text
-code/main.py
+```bash
+python3 main.py --video data/videos/mi_video.mp4
 ```
 
-Linea relevante:
+Tambien se puede elegir archivo de tracking, limite de frames, device e `imgsz`:
 
-```python
-video_path = cfg.BASE_DIR / "data/videos/video1.mp4"
+```bash
+python3 main.py \
+  --video data/videos/mi_video.mp4 \
+  --tracking data/tracking/mi_video.jsonl \
+  --max-frames 900 \
+  --device cuda \
+  --imgsz 640
 ```
-
-Para procesar otro video, cambiar esa ruta por el archivo deseado dentro de
-`code/data/videos/`.
 
 ## Ejecucion del pipeline
 
@@ -232,6 +280,17 @@ Desde `code/`:
 
 ```bash
 python3 main.py > salida.log 2>&1
+```
+
+Para un video especifico:
+
+```bash
+python3 main.py \
+  --video data/videos/mi_video.mp4 \
+  --tracking data/tracking/mi_video.jsonl \
+  --max-frames 900 \
+  --device cuda \
+  --imgsz 640 > salida.log 2>&1
 ```
 
 Monitorear progreso:
@@ -251,7 +310,18 @@ code/data/tracking/tracking.jsonl
 Desde `code/`:
 
 ```bash
-python3 test/mock_tracking_visualization.py > salida_tracking.log 2>&1
+python3 tools/render_tracking_visualization.py > salida_tracking.log 2>&1
+```
+
+El render formal vive en `code/tools/`; `code/test/` se mantiene para pruebas y
+smoke tests de componentes.
+
+Si se uso una ruta personalizada:
+
+```bash
+python3 tools/render_tracking_visualization.py \
+  --video data/videos/mi_video.mp4 \
+  --tracking data/tracking/mi_video.jsonl > salida_tracking.log 2>&1
 ```
 
 La visualización se genera dentro de:
@@ -264,7 +334,27 @@ El script `code/run.sh` ejecuta tracking y render:
 
 ```bash
 cd code
-bash run.sh
+bash run.sh --video data/videos/mi_video.mp4 --max-frames 900 --imgsz 640
+```
+
+`run.sh` ejecuta primero `main.py` y despues el render. Los argumentos
+`--video`, `--tracking` y `--max-frames` se comparten; `--device` e `--imgsz`
+solo afectan al pipeline de vision.
+
+## Pruebas rapidas
+
+Desde `code/`, validar sintaxis y pruebas disponibles:
+
+```bash
+python3 -m py_compile main.py tools/render_tracking_visualization.py tools/diagnose_ball_tracking_video.py tools/diagnose_hsv_ball_candidates.py
+pytest test
+```
+
+Para una prueba corta de procesamiento, usar un clip pequeno o limitar frames:
+
+```bash
+python3 main.py --video data/videos/mi_video.mp4 --max-frames 60 --imgsz 512
+python3 tools/render_tracking_visualization.py --video data/videos/mi_video.mp4 --max-frames 60
 ```
 
 ## Configuración recomendada por GPU
@@ -273,22 +363,22 @@ bash run.sh
 
 - Probar con clips cortos de 10 a 30 segundos.
 - Preferir 720p o menos.
-- Si hay error de memoria CUDA, reducir `imgsz` en `vision/segmentation.py`:
+- Si hay error de memoria CUDA, reducir `--imgsz`:
 
-```python
-imgsz=512
+```bash
+python3 main.py --imgsz 512
 ```
 
 Si aun falla:
 
-```python
-imgsz=384
+```bash
+python3 main.py --imgsz 384
 ```
 
 ## Salidas del sistema
 
 - `code/data/tracking/tracking.jsonl`: resultado por frame.
-- `code/data/outputs/.../mock_tracking_visualization.mp4`: video final.
+- `code/data/outputs/tracking_visualization/tracking_visualization.mp4`: video final.
 - `code/salida.log`: log de procesamiento.
 - `code/salida_tracking.log`: log de visualizacion.
 
@@ -427,18 +517,18 @@ Para reproducir el resultado desde cero:
 
 1. Colocar `sam3.pt` en `code/`.
 2. Colocar el video en `code/data/videos/`.
-3. Ajustar `video_path` en `code/main.py`.
+3. Elegir el video por CLI o usar `data/videos/video1.mp4`.
 4. Ejecutar:
 
 ```bash
 cd code
-MPLCONFIGDIR=/tmp/matplotlib python3.10 main.py > salida.log 2>&1
+MPLCONFIGDIR=/tmp/matplotlib python3.10 main.py --video data/videos/video1.mp4 > salida.log 2>&1
 ```
 
 5. Generar visualizacion:
 
 ```bash
-MPLCONFIGDIR=/tmp/matplotlib python3.10 test/mock_tracking_visualization.py > salida_tracking.log 2>&1
+MPLCONFIGDIR=/tmp/matplotlib python3.10 tools/render_tracking_visualization.py > salida_tracking.log 2>&1
 ```
 
 6. Revisar resultados en:
@@ -488,11 +578,33 @@ compatible con las dependencias usadas y con los terminos de SAM 3.
 
 - Video demo oficial: `TODO: agregar ruta o enlace final`.
 - Reel de Instagram: `TODO: agregar enlace publico final`.
+- Guion del video demo: `docs/video_demo_script.md`.
 
 ## Trabajo futuro
 
-- CLI formal para elegir video, salida, device e `imgsz`.
 - Reglas arbitrales mas completas.
 - Metricas cuantitativas automaticas de precision/recall para tracking.
 - Mejor manejo de oclusiones severas por manos.
 - Empaquetado de pesos grandes con Git LFS o descarga documentada.
+
+## Cierre de entrega
+
+Documentos clave para evaluacion:
+
+- Convocatoria: `docs/doc.md`.
+- Pendientes revisados: `docs/pendientes_entrega.md`.
+- Guion del video demo: `docs/video_demo_script.md`.
+- Licencias y atribuciones de terceros: `LICENCES.md`.
+- Guia de reproduccion: `code/docs/reproduccion.md`.
+- Contrato de `tracking.jsonl`: `code/docs/contrato_tracking.md`.
+- Explicacion de vision: `code/docs/vision_funciones.md`.
+
+Pendientes criticos aun visibles en esta copia:
+
+- agregar o documentar un video de entrada reproducible para correr los comandos de ejemplo;
+- colocar o documentar la descarga oficial de `code/sam3.pt`;
+- generar y enlazar el video demo oficial de maximo 2 minutos;
+- publicar y enlazar el reel publico de Instagram;
+- agregar capturas/GIFs de resultados al README;
+- fijar versiones exactas de dependencias del entorno de ejecucion;
+- corregir el titular en `LICENSE`, que actualmente aparece como `/usr/local/bin`.

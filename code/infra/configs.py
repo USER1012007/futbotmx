@@ -11,7 +11,9 @@ class Config:
     OUTPUT_DIR: Path = DATA_DIR / "outputs"
 
     SAM_MODEL_NAME: str = "sam3.pt"
-    SAM_IMAGE_SIZE: int = int(os.getenv("FUTBOT_SAM_IMGSZ", "640"))
+    SAM_DEVICE: str = os.getenv("FUTBOT_SAM_DEVICE", "cuda")
+    SAM_IMGSZ: int = int(os.getenv("FUTBOT_SAM_IMGSZ", "640"))
+    SAM_IMAGE_SIZE: int = SAM_IMGSZ
     DETECTION_THRESHOLD: float = 0.5
 
     CAMERA_RESOLUTION: tuple[int, int] = (1920, 1080)
