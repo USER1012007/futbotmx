@@ -1,16 +1,14 @@
 # Creditos y licencias
 
-Este archivo resume los creditos, dependencias y consideraciones de licencia del
-proyecto FutBotMX Vision. Debe revisarse antes de publicar el repositorio, el
-video demo o cualquier entregable final.
+Este archivo es la fuente de verdad para creditos, dependencias y consideraciones
+de licencia del proyecto FutBotMX Vision. 
 
 ## Proyecto
 
 - **Nombre:** FutBotMX Vision
 - **Proposito:** sistema de vision por computadora para analizar partidos de
   futbol robotico de la Copa FutBotMX.
-- **Licencia del codigo del proyecto:** MIT, segun el archivo `LICENSE` incluido
-  en la raiz del repositorio.
+- **Licencia del codigo del proyecto:** MIT.
 
 ## Autores y contribucion
 
@@ -21,8 +19,7 @@ video demo o cualquier entregable final.
   otorgados por la convocatoria o por los organizadores.
 - Apoyo de IA generativa:
   se utilizo asistencia de IA para apoyo en programacion, documentacion,
-  depuracion y organizacion del proyecto. La responsabilidad tecnica y de
-  validacion final corresponde al equipo del proyecto.
+  depuracion y organizacion del proyecto.
 
 ## Dependencias principales
 
@@ -37,11 +34,19 @@ Las dependencias declaradas en `environment.yml` son:
 | TorchVision | Utilidades del ecosistema PyTorch | BSD-style |
 | Supervision | Detecciones, anotacion y utilidades de vision | MIT |
 | Ultralytics | Carga/ejecucion del modelo SAM y flujo de segmentacion | AGPL-3.0, salvo licencia comercial aplicable |
-| ByteTrack / bytetracker | Asociacion temporal de detecciones | Verificar licencia exacta del paquete instalado |
+| `trackers` / ByteTrack | Asociacion temporal de detecciones | MIT |
 
-Nota: las licencias pueden variar por version o distribucion. Para una entrega
-formal, verificar la licencia exacta instalada con el gestor de paquetes usado en
-el entorno final.
+## Uso especifico de dependencias en `code/`
+
+- `code/vision/segmentation.py` usa `SAM3SemanticPredictor` de Ultralytics para
+  ejecutar SAM 3 con prompts de texto.
+- `code/vision/segmentation.py` importa `from trackers import ByteTrackTracker`
+  para tracking temporal de robots y balon.
+- `supervision` se usa para `sv.Detections`, conversiones, filtros y combinacion
+  de detecciones.
+- OpenCV se usa para lectura/escritura de video, HSV, contornos, mascaras,
+  homografia, diagnosticos y overlays.
+- PyTorch, TorchVision y CUDA son dependencias del stack de inferencia con GPU.
 
 ## Modelos y pesos
 
@@ -53,57 +58,34 @@ El proyecto utiliza un archivo de pesos esperado en:
 code/sam3.pt
 ```
 
-Este archivo no debe tratarse como codigo propio del proyecto. Debe usarse y
-redistribuirse unicamente bajo los terminos oficiales publicados por Meta o por
-la fuente desde la cual se obtuvo el modelo.
+- Licencia: SAM License (Meta).
+- Pesos: https://huggingface.co/facebook/sam3
+- Tratamiento en este proyecto: No esta incluido dentro
+  del código. Se instala desde el repo/HF oficial en el paso de setup.
 
-Antes de entregar o publicar el repositorio:
+## Tracking: ByteTrack y paquete `trackers`
 
-- confirmar si `sam3.pt` puede redistribuirse;
-- si no puede redistribuirse, excluirlo del repositorio publico;
-- documentar el enlace oficial de descarga y las instrucciones para obtenerlo;
-- conservar cualquier aviso de copyright o licencia requerido por Meta.
+- Licencia: MIT.
+- Repo: https://github.com/FoundationVision/ByteTrack
+- Paper: Zhang et al. (2022), "ByteTrack: Multi-Object Tracking by Associating
+  Every Detection Box."
+- Tratamiento en este proyecto: Se usa `trackers` como paquete Python y `ByteTrackTracker` como clase de
+tracking.
+
+## Ultralytics
+
+- Licencia: AGPL-3.0.
+- Repo: https://github.com/ultralytics/ultralytics
+- Tratamiento en este proyecto: Se usa `SAM3SemanticPredictor` para prompts de texto en `SAM3`.
 
 ## Material audiovisual y datos
 
-Los videos de partidos, imagenes de cancha y capturas usadas para pruebas son
-material de entrada del proyecto. Su uso depende de los permisos dados por la
-convocatoria, los organizadores o los autores originales.
+Los videos de partidos, imagenes de cancha y capturas usadas para pruebas son los del dataset oficial de la [convocatoria](https://drive.google.com/drive/folders/1TF7-P4rAwPmHFw_TjmNfFU3ORxqnp8CD)
 
-Antes de publicar:
+## Outputs generados
 
-- confirmar que los videos pueden mostrarse en el demo y en redes sociales;
-- confirmar que los participantes, equipos o instituciones autorizan su uso si
-  aplica;
-- evitar publicar material sensible o no autorizado;
-- mantener atribucion a Copa FutBotMX / Federacion Mexicana de Robotica cuando
-  corresponda.
-
-## Assets de notebooks
-
-El repositorio contiene notebooks y assets de experimentacion, por ejemplo
-imagenes de demostracion como `bus.jpg` o `zidane.jpg` dentro de carpetas de
-notebooks.
-
-Estos archivos parecen ser material de prueba para ejemplos de vision por
-computadora y no forman parte del pipeline principal de entrega. Si el repositorio
-se publica, se recomienda:
-
-- eliminar assets externos que no sean necesarios;
-- conservar solo material con licencia clara;
-- documentar la fuente original de cada asset conservado.
-
-## Obligaciones practicas para publicar
-
-Antes de publicar una version final del proyecto:
-
-1. Revisar que `LICENSE` tenga el nombre correcto del titular del copyright.
-2. Confirmar la licencia exacta de `sam3.pt`.
-3. Confirmar la licencia exacta del paquete `bytetracker` instalado.
-4. Confirmar si el uso de Ultralytics bajo AGPL-3.0 es compatible con la forma de
-   distribucion del proyecto, o usar una licencia comercial si aplica.
-5. No subir pesos, videos o assets si sus licencias no permiten redistribucion.
-6. Mantener este archivo junto con el README y el archivo `LICENSE`.
+Los archivos en `code/data/tracking/` y `code/data/outputs/` son resultados
+generados a partir de los videos, modelos y dependencias anteriores.
 
 ## Aviso
 

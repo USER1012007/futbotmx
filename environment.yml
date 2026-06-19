@@ -15,4 +15,3 @@ dependencies:
     - supervision
     - ultralytics
     - trackers
-    - pytest

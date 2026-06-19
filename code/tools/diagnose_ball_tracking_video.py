@@ -67,6 +67,8 @@ def _read_tracking(tracking_path: Path) -> dict[int, dict]:
         if not line.strip():
             continue
         raw = json.loads(line)
+        if raw.get("type") == "metadata":
+            continue
         data = raw.get("data", raw)
         records[int(data["frame_id"])] = data
     return records

@@ -104,11 +104,10 @@ del proyecto activo `futbotmx`.
       `code/tools/render_tracking_visualization.py`.
     - Falta validar ese flujo oficial en una instalacion limpia.
 
-14. Pruebas y validaciones limpias
-    - `code/tools/check_core_components.py` valida componentes centrales con
-      datos sinteticos y temporales.
-    - Falta ampliar validaciones limpias para homografia, render y filtros de
-      balon sin depender de videos locales o pesos SAM.
+14. Validaciones manuales
+    - `code/tools/` conserva diagnosticos y render formal.
+    - Falta validar en una instalacion limpia el flujo completo con video y pesos
+      SAM disponibles.
 
 15. Higiene de repositorio publico
     - `.gitignore` excluye pesos y videos, pero `tracking.jsonl`, notebooks,
