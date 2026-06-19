@@ -9,13 +9,17 @@ BALL_MAX_ASPECT_RATIO      = 1.8
 BALL_MIN_CIRCULARITY       = 0.45       # relajado: bola parcialmente ocluida
 BALL_MIN_ORANGE_PIXELS     = 6
 BALL_MIN_ORANGE_RATIO      = 0.04
-BALL_MIN_SIGNATURE_RATIO   = 0.08
-BALL_MIN_SIGNATURE_CIRCULARITY = 0.50
+BALL_MIN_SIGNATURE_RATIO   = 0.12
+BALL_MIN_SIGNATURE_CIRCULARITY = 0.58
 BALL_MIN_FIELD_NEIGHBOR_RATIO = 0.18
 BALL_HSV_CONFIDENCE        = 0.92
 BALL_ROBOT_REJECT_RADIUS_PX   = 58.0
 BALL_ROBOT_REJECT_PADDING_PX  = 14.0
 BALL_FIELD_CONTEXT_PADDING_PX = 18
+BALL_SKIN_CONTEXT_PADDING_PX = 42
+BALL_MAX_SKIN_RING_RATIO = 0.14
+BALL_MAX_SKIN_BOX_RATIO = 0.28
+BALL_MIN_SKIN_PIXELS_TO_REJECT = 90
 
 # ── Rangos HSV naranja (dos bandas para capturar sombras/sobreexposición) ─────
 # Banda primaria: naranja puro brillante
@@ -25,7 +29,7 @@ _HSV_ORANGE_HI1 = np.array([10, 255, 255], dtype=np.uint8)
 _HSV_ORANGE_LO2 = np.array([165, 100,  60], dtype=np.uint8)
 _HSV_ORANGE_HI2 = np.array([180, 255, 255], dtype=np.uint8)
 # Banda terciaria: naranja-amarillo (sobreexposición, luz fuerte encima)
-_HSV_ORANGE_LO3 = np.array([10,  80,  100], dtype=np.uint8)
+_HSV_ORANGE_LO3 = np.array([10,  115,  110], dtype=np.uint8)
 _HSV_ORANGE_HI3 = np.array([25, 255,  255], dtype=np.uint8)
 
 
@@ -47,6 +51,31 @@ def _orange_mask(frame: np.ndarray) -> np.ndarray:
     m2 = cv2.inRange(hsv, _HSV_ORANGE_LO2, _HSV_ORANGE_HI2)
     m3 = cv2.inRange(hsv, _HSV_ORANGE_LO3, _HSV_ORANGE_HI3)
     return cv2.bitwise_or(cv2.bitwise_or(m1, m2), m3)
+
+
+def _skin_mask(frame: np.ndarray) -> np.ndarray:
+    if frame is None or frame.size == 0:
+        return np.zeros((0, 0), dtype=np.uint8)
+
+    ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
+    skin_ycrcb = cv2.inRange(
+        ycrcb,
+        np.array([0, 133, 77], dtype=np.uint8),
+        np.array([255, 173, 127], dtype=np.uint8),
+    )
+
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    skin_hsv_1 = cv2.inRange(
+        hsv,
+        np.array([0, 20, 70], dtype=np.uint8),
+        np.array([25, 170, 255], dtype=np.uint8),
+    )
+    skin_hsv_2 = cv2.inRange(
+        hsv,
+        np.array([165, 20, 70], dtype=np.uint8),
+        np.array([180, 170, 255], dtype=np.uint8),
+    )
+    return cv2.bitwise_or(skin_ycrcb, cv2.bitwise_or(skin_hsv_1, skin_hsv_2))
 
 
 def _clip_box(xyxy: np.ndarray, width: int, height: int) -> tuple[int, int, int, int]:
@@ -134,6 +163,17 @@ def filter_ball_by_orange_signature(det: sv.Detections, frame: np.ndarray) -> sv
             and signature["circularity"] >= BALL_MIN_SIGNATURE_CIRCULARITY
         ):
             keep.append(i)
+    return det[np.array(keep)] if keep else sv.Detections.empty()
+
+
+def filter_ball_against_skin(det: sv.Detections, frame: np.ndarray) -> sv.Detections:
+    if len(det) == 0:
+        return det
+    keep = [
+        i
+        for i in range(len(det))
+        if not is_skin_like_false_ball(det.xyxy[i], frame)
+    ]
     return det[np.array(keep)] if keep else sv.Detections.empty()
 
 
@@ -227,6 +267,55 @@ def orange_signature_for_box(xyxy: np.ndarray, frame: np.ndarray) -> dict[str, f
         "orange_ratio": float(orange_ratio),
         "circularity": float(circularity),
     }
+
+
+def skin_context_for_box(xyxy: np.ndarray, frame: np.ndarray) -> dict[str, float]:
+    if frame is None or frame.size == 0:
+        return {"skin_ring_pixels": 0.0, "skin_ring_ratio": 0.0, "skin_box_ratio": 0.0}
+
+    height, width = frame.shape[:2]
+    skin = _skin_mask(frame)
+
+    x0, y0, x1, y1 = _clip_box(xyxy, width, height)
+    if x1 <= x0 or y1 <= y0:
+        return {"skin_ring_pixels": 0.0, "skin_ring_ratio": 0.0, "skin_box_ratio": 0.0}
+
+    ex0, ey0, ex1, ey1 = _expanded_box(
+        xyxy,
+        width,
+        height,
+        BALL_SKIN_CONTEXT_PADDING_PX,
+    )
+    expanded = skin[ey0:ey1, ex0:ex1]
+    box_skin = skin[y0:y1, x0:x1]
+    ring_mask = np.ones(expanded.shape, dtype=np.uint8)
+    local_x0 = x0 - ex0
+    local_y0 = y0 - ey0
+    local_x1 = x1 - ex0
+    local_y1 = y1 - ey0
+    ring_mask[local_y0:local_y1, local_x0:local_x1] = 0
+    skin_ring_pixels = int(np.count_nonzero(cv2.bitwise_and(expanded, expanded, mask=ring_mask)))
+    ring_pixels = max(1, int(np.count_nonzero(ring_mask)))
+    skin_box_pixels = int(np.count_nonzero(box_skin))
+
+    return {
+        "skin_ring_pixels": float(skin_ring_pixels),
+        "skin_ring_ratio": float(skin_ring_pixels / ring_pixels),
+        "skin_box_ratio": float(skin_box_pixels / max(1, box_skin.size)),
+    }
+
+
+def is_skin_like_false_ball(xyxy: np.ndarray, frame: np.ndarray) -> bool:
+    context = skin_context_for_box(xyxy, frame)
+    if (
+        context["skin_ring_pixels"] >= BALL_MIN_SKIN_PIXELS_TO_REJECT
+        and context["skin_ring_ratio"] >= BALL_MAX_SKIN_RING_RATIO
+    ):
+        return True
+    if context["skin_box_ratio"] >= BALL_MAX_SKIN_BOX_RATIO:
+        signature = orange_signature_for_box(xyxy, frame)
+        return signature["orange_ratio"] < 0.35
+    return False
 
 
 def field_context_ratio_for_box(
@@ -332,9 +421,12 @@ def hsv_ball_fallback(
         circ = _circularity(cnt)
         if circ < BALL_MIN_CIRCULARITY:
             continue
+        box = np.array([x, y, x + w, y + h], dtype=float)
+        if is_skin_like_false_ball(box, frame):
+            continue
         # Score combinado: circularity * log(area) para preferir pelotas grandes y redondas
         score = circ * np.log1p(area)
-        candidates.append((float(score), np.array([x, y, x + w, y + h], dtype=float)))
+        candidates.append((float(score), box))
 
     if not candidates:
         return sv.Detections.empty()

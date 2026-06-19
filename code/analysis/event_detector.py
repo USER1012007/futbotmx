@@ -159,6 +159,8 @@ class EventDetector:
         if self._prev is None or ball is None or ball_position is None or self._prev.ball is None: return None
         previous_position = self._position(self._prev.ball)
         if previous_position is None or not inside_goal_mouth_y(ball_position[1]): return None
+        if REQUIRE_RECENT_BALL_CONTACT_FOR_GOAL and not self._has_recent_ball_contact(frame):
+            return None
         if crossed_right_goal_entry(previous_position[0], ball_position[0]):
             team, scorer_robot = self._goal_team_and_scorer(RIGHT_GOAL_FALLBACK_TEAM, frame)
             return GoalEvent(frame=frame, timestamp_s=timestamp_s, position_cm=ball_position, severity="success", team=team, velocity_cm_s=ball.speed_cm_s, scorer_robot=scorer_robot)
@@ -228,6 +230,13 @@ class EventDetector:
             team = str(getattr(self._last_ball_contact_robot, "team_id", "") or fallback_team)
             return team, self._last_ball_contact_robot
         return fallback_team, None
+
+    def _has_recent_ball_contact(self, frame: int) -> bool:
+        return (
+            self._last_ball_contact_robot is not None
+            and self._last_ball_contact_frame is not None
+            and frame - self._last_ball_contact_frame <= GOAL_CONTACT_MEMORY_FRAMES
+        )
 
     def _update_last_valid_positions(self, robots: Iterable[Robot], ball: Optional[Ball]) -> None:
         for robot in robots:

@@ -15,6 +15,8 @@ from vision.segmentation_config import (
     BALL_GLOBAL_REACQUIRE_MIN_CIRCULARITY,
     BALL_GLOBAL_REACQUIRE_MIN_FIELD_RATIO,
     BALL_GLOBAL_REACQUIRE_MIN_ORANGE_RATIO,
+    BALL_INITIAL_ACQUIRE_MIN_CIRCULARITY,
+    BALL_INITIAL_ACQUIRE_MIN_ORANGE_RATIO,
     BALL_MAX_SEARCH_RADIUS_PX,
     BALL_ORANGE_WEIGHT,
     BALL_RECENT_REJECT_MARGIN_PX,
@@ -146,6 +148,7 @@ class SegmentationEngine:
         sam_candidates = ball_utils.filter_ball_by_aspect_ratio(sam_candidates)
         sam_candidates = ball_utils.filter_ball_by_orange_support(sam_candidates, frame)
         sam_candidates = ball_utils.filter_ball_by_orange_signature(sam_candidates, frame)
+        sam_candidates = ball_utils.filter_ball_against_skin(sam_candidates, frame)
         sam_candidates = ball_utils.filter_ball_by_field_context(
             sam_candidates,
             self.cached_field_mask,
@@ -186,6 +189,7 @@ class SegmentationEngine:
             frame.shape,
         )
         all_candidates = ball_utils.filter_ball_by_orange_signature(all_candidates, frame)
+        all_candidates = ball_utils.filter_ball_against_skin(all_candidates, frame)
         if allow_global_reacquisition:
             all_candidates = ball_utils.filter_ball_center_on_field(
                 all_candidates,
@@ -256,11 +260,19 @@ class SegmentationEngine:
                 or circularity < ball_utils.BALL_MIN_SIGNATURE_CIRCULARITY
             ):
                 continue
+            if state == "search" and predicted is None and (
+                orange_ratio < BALL_INITIAL_ACQUIRE_MIN_ORANGE_RATIO
+                or circularity < BALL_INITIAL_ACQUIRE_MIN_CIRCULARITY
+            ):
+                continue
             if allow_global_reacquisition and (
                 orange_ratio < BALL_GLOBAL_REACQUIRE_MIN_ORANGE_RATIO
                 or circularity < BALL_GLOBAL_REACQUIRE_MIN_CIRCULARITY
                 or not ball_utils.center_on_field_for_box(det.xyxy[i], self.cached_field_mask, frame.shape)
             ):
+                continue
+            skin_context = ball_utils.skin_context_for_box(det.xyxy[i], frame)
+            if ball_utils.is_skin_like_false_ball(det.xyxy[i], frame):
                 continue
             if (
                 allow_global_reacquisition
@@ -278,7 +290,7 @@ class SegmentationEngine:
                 + field_ratio * 20.0
                 - distance * BALL_DISTANCE_WEIGHT
             )
-            scored.append((score, i, distance, confidence, orange_ratio, circularity, field_ratio))
+            scored.append((score, i, distance, confidence, orange_ratio, circularity, field_ratio, skin_context))
 
         if not scored:
             self.last_ball_debug = {
@@ -299,6 +311,7 @@ class SegmentationEngine:
             best_orange_ratio,
             best_circularity,
             best_field_ratio,
+            best_skin_context,
         ) = max(
             scored,
             key=lambda item: item[0],
@@ -314,6 +327,7 @@ class SegmentationEngine:
             "orange_ratio": float(best_orange_ratio),
             "orange_circularity": float(best_circularity),
             "field_context_ratio": float(best_field_ratio),
+            "skin_context": best_skin_context,
             "predicted_center": predicted,
             "radius_px": radius,
             "global_reacquisition": allow_global_reacquisition,
