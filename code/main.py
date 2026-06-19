@@ -7,6 +7,7 @@ from pathlib import Path
 def main():
     cfg = Config()
     video_path = cfg.BASE_DIR / "data/videos/video1.mp4"
+    # video_path = cfg.BASE_DIR / "data/videos/video2.MOV"
     # video_path = cfg.BASE_DIR / "data/videos/futbot-01.jpg"
     
     if not video_path.exists():
