@@ -9,6 +9,7 @@ from vision.segmentation_config import (
     CLASS_BALL,
     CLASS_ROBOT,
     CONF_THRESHOLD,
+    ROBOT_ROI_EXPANDED_SIZE_PX,
     ROBOT_ROI_INFER_SIZE_PX,
     ROBOT_ROI_SIZE_PX,
     ROI_BALL_PROMPTS,
@@ -93,40 +94,42 @@ def infer_missing_robot_rois(
             continue
 
         center = cv_utils.center(cached_box)
-        x1, y1, x2, y2 = detection_utils.roi_bounds(
-            frame.shape[1],
-            frame.shape[0],
-            center,
-            ROBOT_ROI_SIZE_PX,
-        )
-        crop = frame[y1:y2, x1:x2]
-        if crop.size == 0:
-            continue
+        for roi_size in (ROBOT_ROI_SIZE_PX, ROBOT_ROI_EXPANDED_SIZE_PX):
+            x1, y1, x2, y2 = detection_utils.roi_bounds(
+                frame.shape[1],
+                frame.shape[0],
+                center,
+                roi_size,
+            )
+            crop = frame[y1:y2, x1:x2]
+            if crop.size == 0:
+                continue
 
-        crop_h, crop_w = crop.shape[:2]
-        sam_crop = cv2.resize(
-            crop,
-            (ROBOT_ROI_INFER_SIZE_PX, ROBOT_ROI_INFER_SIZE_PX),
-            interpolation=cv2.INTER_CUBIC,
-        )
-        predictor.set_image(sam_crop)
-        roi_results = predictor(text=ROI_ROBOT_PROMPTS)[0]
-        roi_dets = sv.Detections.from_ultralytics(roi_results)
-        roi_dets = detection_utils.scale_roi_detections_to_frame(
-            roi_dets,
-            offset=(x1, y1),
-            roi_size=(crop_w, crop_h),
-            infer_size=(ROBOT_ROI_INFER_SIZE_PX, ROBOT_ROI_INFER_SIZE_PX),
-            class_id=CLASS_ROBOT,
-        )
-        roi_dets = roi_dets[roi_dets.confidence > CONF_THRESHOLD] if len(roi_dets) > 0 else roi_dets
-        roi_dets = robot_utils.filter_robot_roi_candidates(
-            roi_dets,
-            cached_box,
-            roi_size_px=ROBOT_ROI_SIZE_PX,
-        )
-        if len(roi_dets) > 0:
-            roi_detections.append(roi_dets)
+            crop_h, crop_w = crop.shape[:2]
+            sam_crop = cv2.resize(
+                crop,
+                (ROBOT_ROI_INFER_SIZE_PX, ROBOT_ROI_INFER_SIZE_PX),
+                interpolation=cv2.INTER_CUBIC,
+            )
+            predictor.set_image(sam_crop)
+            roi_results = predictor(text=ROI_ROBOT_PROMPTS)[0]
+            roi_dets = sv.Detections.from_ultralytics(roi_results)
+            roi_dets = detection_utils.scale_roi_detections_to_frame(
+                roi_dets,
+                offset=(x1, y1),
+                roi_size=(crop_w, crop_h),
+                infer_size=(ROBOT_ROI_INFER_SIZE_PX, ROBOT_ROI_INFER_SIZE_PX),
+                class_id=CLASS_ROBOT,
+            )
+            roi_dets = roi_dets[roi_dets.confidence > CONF_THRESHOLD] if len(roi_dets) > 0 else roi_dets
+            roi_dets = robot_utils.filter_robot_roi_candidates(
+                roi_dets,
+                cached_box,
+                roi_size_px=roi_size,
+            )
+            if len(roi_dets) > 0:
+                roi_detections.append(roi_dets)
+                break
 
     return detection_utils.combine_detections(
         roi_detections,

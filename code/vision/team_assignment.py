@@ -27,7 +27,18 @@ class TeamAssigner:
                 result.ball.id = "ball"
             return
 
-        team_groups = self._group_by_side(result.robots)
+        if not self._slot_positions:
+            assigned = self._initialize_slots_by_side(result.robots)
+        else:
+            assigned = self._assign_locked_slots(result.robots)
+
+        result.robots = assigned
+
+        if result.ball is not None:
+            result.ball.id = "ball"
+
+    def _initialize_slots_by_side(self, robots) -> list:
+        team_groups = self._group_by_side(robots)
         assigned = []
 
         for team_id in ("allies", "rivals"):
@@ -46,10 +57,45 @@ class TeamAssigner:
                 self._tracker_identity[tracker_id] = (robot_id, team_id)
                 self._slot_positions[robot_id] = self._robot_position(robot)
 
-        result.robots = assigned
+        return assigned
 
-        if result.ball is not None:
-            result.ball.id = "ball"
+    def _assign_locked_slots(self, robots) -> list:
+        assigned = []
+        unassigned = []
+        used_slots: set[str] = set()
+
+        for robot in robots:
+            tracker_id = int(robot.tracker_id)
+            identity = self._tracker_identity.get(tracker_id)
+            if identity is None:
+                unassigned.append(robot)
+                continue
+
+            robot_id, team_id = identity
+            if robot_id in used_slots or robot_id not in self._all_slots():
+                unassigned.append(robot)
+                continue
+
+            self._assign_robot_to_slot(robot, robot_id, team_id)
+            used_slots.add(robot_id)
+            assigned.append(robot)
+
+        still_unassigned = []
+        for robot in unassigned:
+            slot_id = self._nearest_known_slot(robot, used_slots)
+            if slot_id is None:
+                still_unassigned.append(robot)
+                continue
+
+            team_id = self._team_from_slot(slot_id)
+            self._assign_robot_to_slot(robot, slot_id, team_id)
+            used_slots.add(slot_id)
+            assigned.append(robot)
+
+        for robot in self._initialize_missing_slots(still_unassigned, used_slots):
+            assigned.append(robot)
+
+        return self._sort_assigned(assigned)
 
     def _group_by_side(self, robots) -> dict[str, list]:
         with_metric = [robot for robot in robots if getattr(robot, "position_metric", None) is not None]
@@ -146,6 +192,52 @@ class TeamAssigner:
         threshold = SLOT_REID_DISTANCE_CM if current[2] else SLOT_REID_DISTANCE_PX
         return best_id if best_distance <= threshold else None
 
+    def _nearest_known_slot(self, robot, used_slots: set[str]) -> str | None:
+        current = self._robot_position(robot)
+        best_id = None
+        best_distance = float("inf")
+
+        for robot_id, previous_position in self._slot_positions.items():
+            if robot_id in used_slots:
+                continue
+            distance = self._position_distance(current, previous_position)
+            if distance < best_distance:
+                best_id = robot_id
+                best_distance = distance
+
+        if best_id is None:
+            return None
+
+        threshold = SLOT_REID_DISTANCE_CM if current[2] else SLOT_REID_DISTANCE_PX
+        return best_id if best_distance <= threshold else None
+
+    def _initialize_missing_slots(self, robots, used_slots: set[str]) -> list:
+        if not robots:
+            return []
+
+        available_by_team = {
+            team_id: [slot for slot in slots if slot not in used_slots and slot not in self._slot_positions]
+            for team_id, slots in TEAM_SLOTS.items()
+        }
+        if not available_by_team["allies"] and not available_by_team["rivals"]:
+            return []
+
+        team_groups = self._group_by_side(robots)
+        assigned = []
+
+        for team_id in ("allies", "rivals"):
+            available_slots = available_by_team[team_id]
+            if not available_slots:
+                continue
+
+            team_robots = self._order_team_slots(team_groups[team_id])[:len(available_slots)]
+            for robot, slot_id in zip(team_robots, available_slots):
+                self._assign_robot_to_slot(robot, slot_id, team_id)
+                used_slots.add(slot_id)
+                assigned.append(robot)
+
+        return assigned
+
     def _limit_team(self, robots, team_id: str) -> list:
         if len(robots) <= MAX_ROBOTS_PER_TEAM:
             return self._order_team_slots(robots)
@@ -204,6 +296,26 @@ class TeamAssigner:
         if self._frame_width is None:
             return None
         return self._frame_width / 2.0
+
+    def _assign_robot_to_slot(self, robot, robot_id: str, team_id: str) -> None:
+        tracker_id = int(robot.tracker_id)
+        robot.id = robot_id
+        robot.team_id = team_id
+        self._tracker_identity[tracker_id] = (robot_id, team_id)
+        self._slot_positions[robot_id] = self._robot_position(robot)
+
+    @staticmethod
+    def _all_slots() -> set[str]:
+        return {slot for slots in TEAM_SLOTS.values() for slot in slots}
+
+    @staticmethod
+    def _team_from_slot(robot_id: str) -> str:
+        return "allies" if robot_id.startswith("A") else "rivals"
+
+    @staticmethod
+    def _sort_assigned(robots) -> list:
+        slot_order = {slot: index for index, slot in enumerate(["A1", "A2", "R1", "R2"])}
+        return sorted(robots, key=lambda robot: slot_order.get(robot.id, len(slot_order)))
 
 
 class BallMetricStabilizer:

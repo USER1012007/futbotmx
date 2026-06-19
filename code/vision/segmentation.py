@@ -9,6 +9,8 @@ from vision import ball_utils, cv_utils, detection_utils, robot_utils, roi_recov
 from vision.segmentation_config import (
     BALL_CONFIDENCE_WEIGHT,
     BALL_DISTANCE_WEIGHT,
+    BALL_GLOBAL_REACQUIRE_AFTER_FRAMES,
+    BALL_GLOBAL_REACQUIRE_EVERY_FRAMES,
     BALL_MAX_SEARCH_RADIUS_PX,
     BALL_ORANGE_WEIGHT,
     BALL_RECENT_REJECT_MARGIN_PX,
@@ -133,6 +135,7 @@ class SegmentationEngine:
         frame: np.ndarray,
         robot_boxes: np.ndarray,
         include_aux_sources: bool = True,
+        allow_global_reacquisition: bool = False,
     ) -> sv.Detections:
         # 1. Candidatos de SAM
         sam_candidates = ball_utils.filter_ball_by_area(fresh)
@@ -182,7 +185,11 @@ class SegmentationEngine:
 
         # 4. Elegir un solo candidato con restricciones fisicas/temporales antes
         # de ByteTrack. Esto evita saltos imposibles al otro lado de la cancha.
-        return self._select_ball_candidate(all_candidates, frame)
+        return self._select_ball_candidate(
+            all_candidates,
+            frame,
+            allow_global_reacquisition=allow_global_reacquisition,
+        )
 
     def _get_tracked_ball(self, tracked: sv.Detections) -> sv.Detections:
         self._update_ball_cache(tracked)
@@ -192,7 +199,13 @@ class SegmentationEngine:
             return self._ball_cache
         return sv.Detections.empty()
 
-    def _select_ball_candidate(self, det: sv.Detections, frame: np.ndarray) -> sv.Detections:
+    def _select_ball_candidate(
+        self,
+        det: sv.Detections,
+        frame: np.ndarray,
+        *,
+        allow_global_reacquisition: bool = False,
+    ) -> sv.Detections:
         if len(det) == 0:
             self.last_ball_debug = {
                 "state": self._ball_state(),
@@ -205,7 +218,11 @@ class SegmentationEngine:
         state = self._ball_state()
         predicted = self._predicted_ball_center()
         radius = self._search_radius()
-        locked_to_recent_track = predicted is not None and state in {"locked", "lost"}
+        locked_to_recent_track = (
+            predicted is not None
+            and state in {"locked", "lost"}
+            and not allow_global_reacquisition
+        )
 
         scored = []
         for i in range(len(det)):
@@ -278,6 +295,7 @@ class SegmentationEngine:
             "field_context_ratio": float(best_field_ratio),
             "predicted_center": predicted,
             "radius_px": radius,
+            "global_reacquisition": allow_global_reacquisition,
         }
         return det[np.array([best_idx])]
 
@@ -393,6 +411,26 @@ class SegmentationEngine:
             })
             self.last_ball_debug = roi_debug
             ball_candidates = roi_candidates
+
+        if (
+            len(ball_candidates) == 0
+            and self._ball_age >= BALL_GLOBAL_REACQUIRE_AFTER_FRAMES
+            and self.frame_counter % BALL_GLOBAL_REACQUIRE_EVERY_FRAMES == 0
+        ):
+            reacquired_candidates = self._get_ball_candidates(
+                ball_fresh,
+                frame,
+                robot_boxes,
+                include_aux_sources=True,
+                allow_global_reacquisition=True,
+            )
+            reacquire_debug = dict(self.last_ball_debug)
+            reacquire_debug.update({
+                "global_reacquisition_used": True,
+                "global_reacquisition_raw_candidates": len(ball_fresh),
+            })
+            self.last_ball_debug = reacquire_debug
+            ball_candidates = reacquired_candidates
 
         ball_tracked = self.ball_tracker.update(ball_candidates) if len(ball_candidates) > 0 else sv.Detections.empty()
         ball_det = self._get_tracked_ball(ball_tracked)
