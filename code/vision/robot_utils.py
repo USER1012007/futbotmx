@@ -1,8 +1,15 @@
 import numpy as np
 import supervision as sv
+import cv2
 
 from vision import cv_utils
 from vision.segmentation_config import (
+    CLASS_ROBOT,
+    ROBOT_FALLBACK_CONFIDENCE,
+    ROBOT_FALLBACK_MAX_BOX_AREA,
+    ROBOT_FALLBACK_MIN_BOX_AREA,
+    ROBOT_FALLBACK_MIN_CIRCULARITY,
+    ROBOT_FALLBACK_MIN_FILL_RATIO,
     ROBOT_TEMPORAL_GATE_PX,
     ROBOT_TEMPORAL_IOU_GATE,
     ROBOT_TEMPORAL_MAX_AREA_RATIO,
@@ -125,6 +132,84 @@ def filter_robot_roi_candidates(
     return kept[np.array([best])]
 
 
+def foreground_robot_fallback(
+    frame: np.ndarray,
+    field_mask: np.ndarray | None,
+    existing: sv.Detections | None = None,
+    *,
+    max_candidates: int,
+) -> sv.Detections:
+    if frame is None or frame.size == 0:
+        return sv.Detections.empty()
+
+    h, w = frame.shape[:2]
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    hue, sat, val = cv2.split(hsv)
+
+    green = ((hue >= 35) & (hue <= 95) & (sat >= 35) & (val >= 35)).astype(np.uint8) * 255
+    field = _normalized_field_mask(field_mask, w, h) if field_mask is not None else green
+    if field.size == 0 or int(np.count_nonzero(field)) == 0:
+        return sv.Detections.empty()
+
+    field = cv2.dilate(field, np.ones((9, 9), np.uint8), iterations=1)
+    white_lines = ((sat <= 75) & (val >= 145)).astype(np.uint8) * 255
+    foreground = cv2.bitwise_and(field, cv2.bitwise_not(green))
+    foreground = cv2.bitwise_and(foreground, cv2.bitwise_not(white_lines))
+    foreground = cv2.morphologyEx(foreground, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=1)
+    foreground = cv2.morphologyEx(foreground, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8), iterations=1)
+
+    contours, _ = cv2.findContours(foreground, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return sv.Detections.empty()
+
+    existing_boxes = existing.xyxy if existing is not None and len(existing) > 0 else np.empty((0, 4), dtype=float)
+    candidates: list[tuple[float, np.ndarray]] = []
+
+    for contour in contours:
+        x, y, bw, bh = cv2.boundingRect(contour)
+        box_area = float(bw * bh)
+        if box_area < ROBOT_FALLBACK_MIN_BOX_AREA or box_area > ROBOT_FALLBACK_MAX_BOX_AREA:
+            continue
+
+        aspect = max(bw / max(bh, 1), bh / max(bw, 1))
+        if aspect > 2.25:
+            continue
+
+        contour_area = float(cv2.contourArea(contour))
+        fill_ratio = contour_area / max(1.0, box_area)
+        if fill_ratio < ROBOT_FALLBACK_MIN_FILL_RATIO:
+            continue
+
+        circularity = _circularity(contour)
+        if circularity < ROBOT_FALLBACK_MIN_CIRCULARITY:
+            continue
+
+        box = np.array([x, y, x + bw, y + bh], dtype=float)
+        center = cv_utils.center(box)
+        if _overlaps_existing_robot(box, center, existing_boxes):
+            continue
+
+        score = (
+            ROBOT_FALLBACK_CONFIDENCE
+            + min(box_area / 12000.0, 1.0) * 0.16
+            + min(fill_ratio, 1.0) * 0.18
+            + min(circularity, 1.0) * 0.16
+        )
+        candidates.append((float(min(score, 0.88)), box))
+
+    if not candidates:
+        return sv.Detections.empty()
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    selected = candidates[:max(1, max_candidates)]
+    return sv.Detections(
+        xyxy=np.array([box for _, box in selected], dtype=float),
+        confidence=np.array([score for score, _ in selected], dtype=float),
+        class_id=np.full(len(selected), CLASS_ROBOT, dtype=int),
+        tracker_id=np.full(len(selected), -1, dtype=int),
+    )
+
+
 def _top_confidence(det: sv.Detections, max_items: int) -> sv.Detections:
     if len(det) <= max_items:
         return det
@@ -132,3 +217,34 @@ def _top_confidence(det: sv.Detections, max_items: int) -> sv.Detections:
         return det[np.arange(max_items)]
     top = np.argsort(-det.confidence)[:max_items]
     return det[top]
+
+
+def _normalized_field_mask(field_mask: np.ndarray, width: int, height: int) -> np.ndarray:
+    fm = field_mask
+    if fm.ndim == 3:
+        fm = np.any(fm, axis=0).astype(np.uint8)
+    fm = (fm * 255).astype(np.uint8) if fm.max() <= 1 else fm.astype(np.uint8)
+    fm = cv2.resize(fm, (width, height), interpolation=cv2.INTER_NEAREST)
+    return (fm > 0).astype(np.uint8) * 255
+
+
+def _circularity(contour) -> float:
+    area = cv2.contourArea(contour)
+    perimeter = cv2.arcLength(contour, True)
+    if perimeter <= 0:
+        return 0.0
+    return float(4.0 * np.pi * area / (perimeter ** 2))
+
+
+def _overlaps_existing_robot(
+    box: np.ndarray,
+    center: tuple[float, float],
+    existing_boxes: np.ndarray,
+) -> bool:
+    for existing_box in existing_boxes:
+        if cv_utils.iou(box, existing_box) > 0.20:
+            return True
+        existing_center = cv_utils.center(existing_box)
+        if np.hypot(center[0] - existing_center[0], center[1] - existing_center[1]) < 85.0:
+            return True
+    return False

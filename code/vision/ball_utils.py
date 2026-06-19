@@ -177,6 +177,22 @@ def filter_ball_by_field_context(
     return det[np.array(keep)] if keep else sv.Detections.empty()
 
 
+def filter_ball_center_on_field(
+    det: sv.Detections,
+    field_mask: np.ndarray | None,
+    frame_shape: tuple[int, ...],
+) -> sv.Detections:
+    if len(det) == 0 or field_mask is None:
+        return det
+
+    keep = [
+        i
+        for i in range(len(det))
+        if center_on_field_for_box(det.xyxy[i], field_mask, frame_shape)
+    ]
+    return det[np.array(keep)] if keep else sv.Detections.empty()
+
+
 def orange_ratio_for_box(xyxy: np.ndarray, frame: np.ndarray) -> float:
     """Devuelve fracción de píxeles naranja dentro del bounding box."""
     if frame is None or frame.size == 0:
@@ -229,6 +245,20 @@ def field_context_ratio_for_box(
     )
     roi = field[y0:y1, x0:x1]
     return int(np.count_nonzero(roi)) / max(1, roi.size)
+
+
+def center_on_field_for_box(
+    xyxy: np.ndarray,
+    field_mask: np.ndarray | None,
+    frame_shape: tuple[int, ...],
+) -> bool:
+    if field_mask is None:
+        return True
+    field = _normalized_field_mask(field_mask, frame_shape[1], frame_shape[0])
+    cx, cy = _center(xyxy)
+    px = int(round(cx))
+    py = int(round(cy))
+    return 0 <= px < field.shape[1] and 0 <= py < field.shape[0] and field[py, px] > 0
 
 
 def _normalized_field_mask(field_mask: np.ndarray, width: int, height: int) -> np.ndarray:

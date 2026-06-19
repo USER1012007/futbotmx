@@ -11,6 +11,9 @@ from vision.segmentation_config import (
     BALL_DISTANCE_WEIGHT,
     BALL_GLOBAL_REACQUIRE_AFTER_FRAMES,
     BALL_GLOBAL_REACQUIRE_EVERY_FRAMES,
+    BALL_GLOBAL_REACQUIRE_MIN_CIRCULARITY,
+    BALL_GLOBAL_REACQUIRE_MIN_FIELD_RATIO,
+    BALL_GLOBAL_REACQUIRE_MIN_ORANGE_RATIO,
     BALL_MAX_SEARCH_RADIUS_PX,
     BALL_ORANGE_WEIGHT,
     BALL_RECENT_REJECT_MARGIN_PX,
@@ -182,6 +185,12 @@ class SegmentationEngine:
             frame.shape,
         )
         all_candidates = ball_utils.filter_ball_by_orange_signature(all_candidates, frame)
+        if allow_global_reacquisition:
+            all_candidates = ball_utils.filter_ball_center_on_field(
+                all_candidates,
+                self.cached_field_mask,
+                frame.shape,
+            )
 
         # 4. Elegir un solo candidato con restricciones fisicas/temporales antes
         # de ByteTrack. Esto evita saltos imposibles al otro lado de la cancha.
@@ -242,10 +251,18 @@ class SegmentationEngine:
 
             if field_ratio < ball_utils.BALL_MIN_FIELD_NEIGHBOR_RATIO:
                 continue
+            if allow_global_reacquisition and field_ratio < BALL_GLOBAL_REACQUIRE_MIN_FIELD_RATIO:
+                continue
             if (
                 signature["orange_pixels"] < ball_utils.BALL_MIN_ORANGE_PIXELS
                 or orange_ratio < ball_utils.BALL_MIN_SIGNATURE_RATIO
                 or circularity < ball_utils.BALL_MIN_SIGNATURE_CIRCULARITY
+            ):
+                continue
+            if allow_global_reacquisition and (
+                orange_ratio < BALL_GLOBAL_REACQUIRE_MIN_ORANGE_RATIO
+                or circularity < BALL_GLOBAL_REACQUIRE_MIN_CIRCULARITY
+                or not ball_utils.center_on_field_for_box(det.xyxy[i], self.cached_field_mask, frame.shape)
             ):
                 continue
             if locked_to_recent_track and distance > radius + BALL_RECENT_REJECT_MARGIN_PX:
@@ -255,6 +272,7 @@ class SegmentationEngine:
                 confidence * BALL_CONFIDENCE_WEIGHT
                 + orange_ratio * BALL_ORANGE_WEIGHT
                 + circularity * 25.0
+                + field_ratio * 20.0
                 - distance * BALL_DISTANCE_WEIGHT
             )
             scored.append((score, i, distance, confidence, orange_ratio, circularity, field_ratio))
@@ -351,15 +369,28 @@ class SegmentationEngine:
         ball_fresh   = detections[detections.class_id == CLASS_BALL]
         field_fresh  = detections[detections.class_id == CLASS_FIELD]
 
+        # Campo (cacheado). La mascara tambien ayuda a descartar manos/fondo en HSV.
+        if self.frame_counter % FIELD_CACHE_EVERY == 0 or self.cached_field_mask is None:
+            self.cached_field_mask = _build_field_mask(field_fresh, self.cached_field_mask)
+
+        if len(robots_fresh) < MAX_ROBOTS:
+            fallback_robots = robot_utils.foreground_robot_fallback(
+                frame,
+                self.cached_field_mask,
+                robots_fresh,
+                max_candidates=MAX_ROBOTS - len(robots_fresh),
+            )
+            robots_fresh = detection_utils.combine_detections(
+                [robots_fresh, fallback_robots],
+                default_class_id=CLASS_ROBOT,
+            )
+            robots_fresh = cv_utils.nms_detections(robots_fresh, 0.35)
+
         robots_fresh = robot_utils.select_temporally_consistent_robots(
             robots_fresh,
             self._robot_cache if self._robot_age <= MAX_ROBOT_AGE else None,
             max_robots=MAX_ROBOTS,
         )
-
-        # Campo (cacheado). La mascara tambien ayuda a descartar manos/fondo en HSV.
-        if self.frame_counter % FIELD_CACHE_EVERY == 0 or self.cached_field_mask is None:
-            self.cached_field_mask = _build_field_mask(field_fresh, self.cached_field_mask)
 
         if len(robots_fresh) < MAX_ROBOTS and self._robot_cache is not None and self._robot_age <= MAX_ROBOT_AGE:
             robot_roi_fresh = roi_recovery.infer_missing_robot_rois(
