@@ -1,390 +1,237 @@
 # FutBotMX Vision
 
-Sistema de vision por computadora para analizar partidos de futbol robotico de la
-Copa FutBotMX. El proyecto usa SAM 3 como modelo base de segmentacion y lo
-complementa con tracking temporal, filtros geometricos, vision clasica, homografia,
-deteccion de eventos y visualizaciones tacticas.
+Pipeline de vision por computadora para analizar partidos de futbol robotico de
+la Copa FutBotMX. Usa SAM 3 para segmentación y agrega tracking temporal,
+filtros geométricos, homografía, detección de eventos y una visualización
+tactica del partido.
 
-## Objetivo
+El sistema rastrea:
 
-Procesar videos de futbol robotico para:
+- robots con IDs estables: `A1`, `A2`, `R1`, `R2`;
+- la pelota naranja;
+- posesión por equipo, goles, colisiones, robots detenidos y distancia recorrida;
+- un video final con frame original, mapa táctico y estadísticas del partido.
 
-- segmentar cancha, robots y balon;
-- rastrear las trayectorias de robots y pelota;
-- asignar identidades estables `A1`, `A2`, `R1`, `R2`;
-- calcular posesion, distancia recorrida, velocidades y eventos del partido;
-- generar una visualizacion narrativa con video original, mapa tactico, marcador,
-  posesion, eventos e historia del juego.
+> Este proyecto no hace fine-tuning de SAM 3. Usa el modelo preentrenado
+> `sam3.pt` y mejora la confiabilidad con postprocesamiento, recuperación local
+> y validación temporal.
 
-## Entregables
+## Inicio Rápido
 
-- Codigo funcional del pipeline de vision, tracking, analisis y visualizacion.
-- Archivo de tracking por frame en `code/data/tracking/tracking.jsonl`.
-- Video renderizado con dashboard en `code/data/outputs/`.
-- Documentacion de arquitectura, instalacion, ejecucion, resultados y creditos en
-  este README.
-- Video demo oficial: `TODO: agregar ruta o enlace`.
-- Reel de Instagram: `TODO: agregar enlace publico`.
-
-## Enfoque tecnico
-
-El sistema no hace fine-tuning de SAM 3. Se usa el modelo preentrenado `sam3.pt`
-con prompts de texto y se agregan capas de post-procesamiento:
-
-1. **SAM 3 + prompts**: segmentacion de robots, balon naranja y cancha.
-2. **ByteTrack**: asociacion temporal de detecciones y persistencia de IDs crudos.
-3. **Filtros de pelota**: HSV naranja, circularidad, area, contexto de cancha,
-   rechazo por cercania a robots y compuerta temporal.
-4. **Recuperacion por ROI**: si se pierde pelota o robot, se busca cerca de la
-   ultima posicion conocida.
-5. **Fallback clasico de robots**: si SAM pierde robots visibles, se buscan objetos
-   no verdes sobre la mascara de cancha.
-6. **Homografia**: conversion de pixeles a centimetros de cancha.
-7. **Asignacion de equipos**: inicializacion por lado de cancha y bloqueo de slots
-   `A1/A2/R1/R2` por tracker/cercania.
-8. **Analisis deportivo**: posesion, pases, goles, colisiones, fuera de cancha,
-   robots detenidos y estadisticas acumuladas.
-9. **Visualizacion**: composicion de video original, mapa tactico y dashboard.
-
-La innovacion principal no esta en entrenar un nuevo modelo, sino en integrar SAM 3
-con seguimiento temporal, validaciones fisicas, recuperacion local y analisis del
-partido.
-
-## Arquitectura
-
-```text
-futbotmx/
-├── code/
-│   ├── main.py
-│   ├── run.sh
-│   ├── sam3.pt
-│   ├── domain/
-│   │   ├── entities.py
-│   │   ├── events.py
-│   │   ├── field.py
-│   │   └── stats.py
-│   ├── infra/
-│   │   ├── configs.py
-│   │   └── event_bus.py
-│   ├── io_utils/
-│   │   ├── video_source.py
-│   │   └── tracking_io.py
-│   ├── vision/
-│   │   ├── segmentation.py
-│   │   ├── segmentation_config.py
-│   │   ├── ball_utils.py
-│   │   ├── robot_utils.py
-│   │   ├── roi_recovery.py
-│   │   ├── detection_utils.py
-│   │   ├── homography.py
-│   │   ├── team_assignment.py
-│   │   ├── goal_detector.py
-│   │   ├── smoother.py
-│   │   └── pipeline.py
-│   ├── analysis/
-│   │   ├── pipeline.py
-│   │   ├── enricher.py
-│   │   ├── event_detector.py
-│   │   ├── stats_engine.py
-│   │   ├── event_deduper.py
-│   │   └── referee_engine.py
-│   ├── visualization/
-│   │   ├── video_render.py
-│   │   ├── tactical_map.py
-│   │   ├── dashboard.py
-│   │   └── layout.py
-│   ├── data/
-│   │   ├── videos/
-│   │   ├── tracking/
-│   │   └── outputs/
-│   ├── tools/
-│   │   ├── render_tracking_visualization.py
-│   │   ├── diagnose_ball_tracking_video.py
-│   │   └── diagnose_hsv_ball_candidates.py
-│   └── test/
-│       └── test_analysis_integration.py
-├── docs/
-│   ├── doc.md
-│   └── Convocatoria_CopaFutBotMX-Meta-VF-20260429T020141.pdf
-├── contract/
-├── environment.yml
-├── LICENSE
-└── README.md
-```
-
-## Flujo de procesamiento
-
-```text
-main.py
-  ├─ vision.pipeline.Pipeline
-  │   ├─ VideoSource lee frames
-  │   ├─ SegmentationEngine detecta cancha, robots y balon
-  │   ├─ HomographyEngine proyecta pixeles a centimetros
-  │   ├─ TeamAssigner asigna A1/A2/R1/R2
-  │   ├─ PositionSmoother reduce jitter
-  │   └─ TrackingIO escribe tracking.jsonl
-  │
-  └─ analysis.pipeline.AnalysisPipeline
-      ├─ DataEnricher estima velocidades
-      ├─ EventDetector detecta eventos
-      ├─ StatsEngine acumula estadisticas
-      └─ RefereeEngine reserva reglas arbitrales futuras
-```
-
-## Modulos principales
-
-### `vision/`
-
-Convierte pixeles en entidades estructuradas.
-
-- `segmentation.py`: motor principal de SAM 3, ByteTrack, filtros y recuperacion.
-- `segmentation_config.py`: constantes de prompts, clases, umbrales y ROI.
-- `ball_utils.py`: filtros de pelota naranja, HSV, circularidad, campo y template
-  matching.
-- `robot_utils.py`: compuertas temporales de robots y fallback clasico.
-- `roi_recovery.py`: busqueda local de pelota y robots perdidos.
-- `homography.py`: calcula y aplica homografia hacia coordenadas metricas.
-- `team_assignment.py`: asigna y estabiliza `A1/A2/R1/R2`.
-- `goal_detector.py`: detecta porterias amarilla y azul por HSV.
-- `pipeline.py`: coordina el flujo de vision frame por frame.
-
-### `analysis/`
-
-Convierte tracking en informacion deportiva.
-
-- `enricher.py`: estima velocidad y direccion.
-- `event_detector.py`: detecta posesion, pases, goles, colisiones, fuera de cancha
-  y robots detenidos.
-- `stats_engine.py`: acumula marcador, posesion, distancia, eventos y velocidades.
-- `pipeline.py`: conecta analisis al `EventBus`.
-
-### `visualization/`
-
-Presenta los resultados.
-
-- `video_render.py`: dibuja robots, pelota y eventos sobre video.
-- `tactical_map.py`: genera mapa cenital de cancha.
-- `dashboard.py`: marcador, posesion, distancia, eventos e historia.
-- `layout.py`: distribucion visual de paneles.
-
-### `domain/`, `infra/`, `io_utils/`
-
-- `domain/`: entidades y eventos compartidos por todo el sistema.
-- `infra/`: configuracion y bus publish/subscribe.
-- `io_utils/`: lectura de video y persistencia de tracking.
-
-## Requisitos de hardware y software
-
-Recomendado:
-
-- Linux.
-- Python 3.10.
-- GPU NVIDIA con CUDA.
-- Para pruebas cortas: RTX 3050 6GB con video pequeno o `imgsz` reducido.
-- OpenCV.
-- PyTorch con CUDA.
-- Ultralytics.
-- Roboflow Supervision.
-- ByteTrack/tracker compatible.
-
-El archivo de pesos esperado es:
-
-```text
-code/sam3.pt
-```
-
-El modelo debe usarse conforme a la licencia publicada por Meta para SAM 3.
-
-## Instalacion
-
-Clonar el repositorio:
+### 1. Clonar
 
 ```bash
-git clone <URL_DEL_REPOSITORIO>
+git clone https://github.com/USER1012007/futbotmx.git
 cd futbotmx
 ```
 
-Crear el entorno desde la raiz del repositorio:
+### 2. Crear Entorno
+
+El proyecto esta pensado para correr con GPU NVIDIA y CUDA. Linux es el entorno
+recomendado para procesar videos largos; Windows tambien funciona si tienes
+drivers NVIDIA/CUDA correctos. En macOS se puede instalar para pruebas, pero la
+inferencia sera mas lenta si corre en CPU.
+
+#### Linux
 
 ```bash
 conda env create -f environment.yml
 conda activate futbotmx
 ```
 
-Si el entorno ya existe:
+Validar GPU:
 
 ```bash
-conda env update -f environment.yml --prune
+python3 -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
+```
+
+#### Windows
+
+Usa Anaconda Prompt o PowerShell con Conda disponible:
+
+```powershell
+conda env create -f environment.yml
 conda activate futbotmx
 ```
 
-Entrar al codigo:
+Validar GPU:
 
-```bash
-cd code
+```powershell
+python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
 ```
 
-Colocar los pesos de SAM 3 en:
+Si usas Windows nativo, ejecuta los comandos de Python manualmente. `run.sh`
+requiere Git Bash, WSL o una terminal compatible con Bash.
+
+#### macOS
+
+`environment.yml` incluye `pytorch-cuda`, que no esta disponible en macOS. Para
+pruebas locales, crea un entorno sin CUDA:
+
+```bash
+conda create -n futbotmx python=3.10 numpy opencv pytorch torchvision -c pytorch -c conda-forge
+conda activate futbotmx
+pip install supervision ultralytics trackers pytest
+```
+
+Ejecuta el pipeline con CPU:
+
+```bash
+python3 main.py --device cpu --video ruta/de_tu/video.mp4
+```
+
+### 3. Agregar Modelo y Video
+
+Coloca los pesos de SAM 3 aqui:
 
 ```text
 code/sam3.pt
 ```
 
-Colocar el video a procesar en:
-
-```text
-code/data/videos/
-```
-
-El nombre por defecto es `video1.mp4`, pero tambien se puede pasar otra ruta por
-CLI.
-
-Validar CUDA:
-
-```bash
-python3.10 -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
-```
-
-Si `torch.cuda.is_available()` devuelve `False`, SAM3 no correra en GPU.
-
-Validar que los entrypoints cargan:
-
-```bash
-python3 main.py --help
-python3 tools/render_tracking_visualization.py --help
-```
-
-## Configuracion del video
-
-El video por defecto es `code/data/videos/video1.mp4`. Para procesar otro video,
-pasarlo por CLI desde `code/`:
-
-```bash
-python3 main.py --video data/videos/mi_video.mp4
-```
-
-Tambien se puede elegir archivo de tracking, limite de frames, device e `imgsz`:
-
-```bash
-python3 main.py \
-  --video data/videos/mi_video.mp4 \
-  --tracking data/tracking/mi_video.jsonl \
-  --max-frames 900 \
-  --device cuda \
-  --imgsz 640
-```
-
-## Ejecucion del pipeline
-
-Desde `code/`:
-
-```bash
-python3 main.py > salida.log 2>&1
-```
-
-Para un video especifico:
-
-```bash
-python3 main.py \
-  --video data/videos/mi_video.mp4 \
-  --tracking data/tracking/mi_video.jsonl \
-  --max-frames 900 \
-  --device cuda \
-  --imgsz 640 > salida.log 2>&1
-```
-
-Monitorear progreso:
-
-```bash
-tail -f salida.log
-```
-
-Salida principal:
-
-```text
-code/data/tracking/tracking.jsonl
-```
-
-## Generación de visualización
-
-Desde `code/`:
-
-```bash
-python3 tools/render_tracking_visualization.py > salida_tracking.log 2>&1
-```
-
-El render formal vive en `code/tools/`; `code/test/` se mantiene para pruebas y
-smoke tests de componentes.
-
-Si se uso una ruta personalizada:
-
-```bash
-python3 tools/render_tracking_visualization.py \
-  --video data/videos/mi_video.mp4 \
-  --tracking data/tracking/mi_video.jsonl > salida_tracking.log 2>&1
-```
-
-La visualización se genera dentro de:
-
-```text
-code/data/outputs/
-```
-
-El script `code/run.sh` ejecuta tracking y render:
+### 4. Ejecutar Tracking
 
 ```bash
 cd code
-bash run.sh --video data/videos/mi_video.mp4 --max-frames 900 --imgsz 640
+python3 main.py --video ruta/de_tu/video.mp4
 ```
 
-`run.sh` ejecuta primero `main.py` y despues el render. Los argumentos
-`--video`, `--tracking` y `--max-frames` se comparten; `--device` e `--imgsz`
-solo afectan al pipeline de vision.
+Esto genera:
 
-## Pruebas rapidas
+```text
+data/tracking/tracking.jsonl
+```
 
-Desde `code/`, validar sintaxis y pruebas disponibles:
+### 5. Renderizar Visualizacion
 
 ```bash
-python3 -m py_compile main.py tools/render_tracking_visualization.py tools/diagnose_ball_tracking_video.py tools/diagnose_hsv_ball_candidates.py
-pytest test
+python3 tools/render_tracking_visualization.py \
+  --video ruta/de_tu/video.mp4 \
+  --tracking data/tracking/tracking.jsonl
 ```
 
-Para una prueba corta de procesamiento, usar un clip pequeno o limitar frames:
+El video de salida se escribe en:
+
+```text
+data/outputs/tracking_visualization/tracking_visualization.mp4
+```
+
+## Ejecución En Un Comando
+
+Desde `code/`, ejecuta tracking y render en un solo paso:
 
 ```bash
-python3 main.py --video data/videos/mi_video.mp4 --max-frames 60 --imgsz 512
-python3 tools/render_tracking_visualization.py --video data/videos/mi_video.mp4 --max-frames 60
+bash run.sh --video ruta/de_tu/video.mp4
 ```
 
-## Configuración recomendada por GPU
+Para una prueba corta:
 
-### RTX 3050 6GB
+```bash
+bash run.sh --video ruta/de_tu/video.mp4 --max-frames 300 --imgsz 640
+```
 
-- Probar con clips cortos de 10 a 30 segundos.
-- Preferir 720p o menos.
-- Si hay error de memoria CUDA, reducir `--imgsz`:
+### GPU / Tamaño De Imagen
+
+Para una GPU pequeña:
 
 ```bash
 python3 main.py --imgsz 512
 ```
 
-Si aun falla:
+Para una GPU más fuerte:
 
 ```bash
-python3 main.py --imgsz 384
+python3 main.py --imgsz 1280
 ```
 
-## Salidas del sistema
+Tambien puedes usar variables de entorno:
 
-- `code/data/tracking/tracking.jsonl`: resultado por frame.
-- `code/data/outputs/tracking_visualization/tracking_visualization.mp4`: video final.
-- `code/salida.log`: log de procesamiento.
-- `code/salida_tracking.log`: log de visualizacion.
+```bash
+FUTBOT_SAM_DEVICE=cuda FUTBOT_SAM_IMGSZ=1280 python3 main.py
+```
 
-## Contrato de datos de `tracking.jsonl`
+### Logs
 
-El archivo `tracking.jsonl` tiene una linea JSON por frame:
+```bash
+python3 main.py > salida.log 2>&1
+tail -f salida.log
+```
+
+## Requisitos
+
+Entorno recomendado:
+
+- Linux
+- Python 3.10
+- GPU NVIDIA con CUDA
+- PyTorch con CUDA
+- OpenCV
+- Ultralytics
+- Supervision
+- Tracker compatible con ByteTrack
+
+## Estructura Del Proyecto
+
+```text
+futbotmx/
+├── code/
+│   ├── main.py
+│   ├── run.sh
+│   ├── vision/          # segmentación, tracking, homografía, equipos
+│   ├── analysis/        # eventos, estadísticas, lógica arbitral
+│   ├── visualization/   # dashboard, mapa táctico, render final
+│   ├── domain/          # entidades compartidas y modelo de cancha
+│   ├── io_utils/        # lectura de video y tracking I/O
+│   ├── tools/           # scripts de render y diagnostico
+│   └── data/
+│       ├── videos/
+│       ├── tracking/
+│       └── outputs/
+├── docs/
+├── environment.yml
+├── LICENSE
+├── CREDITOS_LICENCIAS.md
+└── README.md
+```
+
+## Cómo Funciona
+
+```text
+Frame de video
+  ├─ segmentación con SAM 3
+  ├─ filtrado de robots y pelota
+  ├─ asociación temporal con ByteTrack
+  ├─ recuperación local por ROI cuando desaparecen objetos
+  ├─ homografía a coordenadas de cancha
+  ├─ IDs estables de equipo: A1/A2/R1/R2
+  ├─ detección de eventos y estadísticas
+  └─ render del dashboard
+```
+
+Componentes principales:
+
+- `vision/segmentation.py`: inferencia con SAM 3, ByteTrack, recuperación de
+  objetos y detecciones finales por frame.
+- `vision/ball_utils.py`: filtros de pelota naranja, fallback HSV, rechazo de
+  piel/manos, contexto de cancha y validación temporal.
+- `vision/robot_utils.py`: compuertas temporales de robots y fallback para
+  robots perdidos.
+- `vision/team_assignment.py`: IDs estables y slots por equipo.
+- `vision/homography.py`: proyección de pixeles a centímetros.
+- `analysis/event_detector.py`: goles, pases, posesión, colisiones, fuera de
+  cancha y robots detenidos.
+- `analysis/stats_engine.py`: estadísticas del partido y métricas acumuladas.
+- `visualization/`: mapa táctico y video final con dashboard.
+
+## Archivos de Salida
+
+```text
+code/data/tracking/tracking.jsonl
+code/data/outputs/tracking_visualization/tracking_visualization.mp4
+code/salida.log
+code/salida_tracking.log
+```
+
+`tracking.jsonl` guarda un objeto JSON por frame:
 
 ```json
 {
@@ -400,161 +247,71 @@ El archivo `tracking.jsonl` tiene una linea JSON por frame:
 }
 ```
 
-### Robot
-
-```json
-{
-  "id": "A1",
-  "team_id": "allies",
-  "tracker_id": 7,
-  "position_pixel": {
-    "x": 523.2,
-    "y": 841.5,
-    "is_metric": false,
-    "unit": "px"
-  },
-  "position_metric": {
-    "x": 85.1,
-    "y": 43.2,
-    "is_metric": true,
-    "unit": "cm"
-  },
-  "speed_cm_s": 12.4,
-  "angle": -35.0,
-  "is_penalized": false,
-  "penalization_frames_left": 0
-}
-```
-
-Campos importantes:
-
-- `id`: identidad estable (`A1`, `A2`, `R1`, `R2`).
-- `team_id`: `allies` o `rivals`.
-- `tracker_id`: ID temporal de ByteTrack; no debe usarse como identidad final.
-- `position_pixel`: centro del robot en pixeles.
-- `position_metric`: posición en centimetros por homografía.
-- `speed_cm_s`: velocidad estimada.
-- `angle`: dirección estimada.
-
-### Balón
-
-```json
-{
-  "id": "ball",
-  "tracker_id": 2,
-  "position_pixel": {
-    "x": 610.0,
-    "y": 740.0,
-    "is_metric": false,
-    "unit": "px"
-  },
-  "position_metric": {
-    "x": 121.5,
-    "y": 91.0,
-    "is_metric": true,
-    "unit": "cm"
-  },
-  "speed_cm_s": 45.2,
-  "direction_vector": [12.1, -4.5]
-}
-```
-
-## Visualización y narrativa
-
-El dashboard final muestra:
-
-- video original anotado;
-- mapa táctico cenital;
-- marcador;
-- posesión por equipo;
-- distancia recorrida;
-- eventos acumulados;
-- historia cronológica del partido.
-
-Eventos considerados:
-
-- goles;
-- posesión;
-- pases;
-- colisiones;
-- fuera de cancha;
-- robots detenidos;
-- reposicionamientos.
-
-## Resultados obtenidos
-
-El sistema produce tracking y visualizaciones completas para los videos de prueba.
-En las corridas realizadas se observo:
-
-- tracking estable de robots cuando hay visibilidad parcial;
-- recuperacion de robots mediante ROI y fallback clasico;
-- tracking de pelota con filtros de color, cancha y compuertas temporales;
-- asignacion estable `A1/A2/R1/R2`;
-- cálculo de posesión, distancia recorrida y eventos;
-- dashboard final con narrativa del partido.
-
-
-- frame con deteccion de 4 robots y balon;
-- mapa tactico con trayectorias;
-- dashboard con marcador/posesion/eventos;
-- comparativa video original vs resultado anotado.
-
-## Limitaciones conocidas
-
-- Las manos y oclusiones pueden ocultar robots o pelota.
-- La pelota puede perderse cuando sale de cancha o queda cerca de objetos naranjas.
-- La homografia depende de la calidad de la mascara de cancha y de la deteccion de
-  porterias.
-- La asignacion inicial de equipos usa lado de cancha; despues se bloquea por slot.
-- El calculo de distancia usa un filtro anti-jitter, por lo que movimientos menores
-  al umbral se consideran ruido.
-- `RefereeEngine` existe como punto de extension, pero las reglas arbitrales
-  avanzadas quedan como trabajo futuro.
-
-## Reproducibilidad
-
-Para reproducir el resultado desde cero:
-
-1. Colocar `sam3.pt` en `code/`.
-2. Colocar el video en `code/data/videos/`.
-3. Elegir el video por CLI o usar `data/videos/video1.mp4`.
-4. Ejecutar:
-
-```bash
-cd code
-MPLCONFIGDIR=/tmp/matplotlib python3.10 main.py --video data/videos/video1.mp4 > salida.log 2>&1
-```
-
-5. Generar visualizacion:
-
-```bash
-MPLCONFIGDIR=/tmp/matplotlib python3.10 tools/render_tracking_visualization.py > salida_tracking.log 2>&1
-```
-
-6. Revisar resultados en:
+Los IDs de robots se normalizan a:
 
 ```text
-data/tracking/tracking.jsonl
-data/outputs/
+A1, A2, R1, R2
 ```
 
-## Validacion recomendada
+El `tracker_id` crudo viene de ByteTrack y no debe usarse como identidad final
+del robot.
 
-Antes de procesar un video largo:
+## Validación Antes De Corridas Largas
 
-- correr un clip corto;
-- revisar que no haya errores en `salida.log`;
-- confirmar que robots visibles aparezcan como `A1/A2/R1/R2`;
-- confirmar que la pelota no salte a porterias u objetos naranjas;
-- revisar que las distancias no crezcan cuando los robots estan quietos.
+Antes de procesar un partido completo:
 
-## Uso de IA generativa
+```bash
+python3 main.py --video data/videos/my_match.mp4 --max-frames 300 --imgsz 640
+python3 tools/render_tracking_visualization.py \
+  --video data/videos/my_match.mp4 \
+  --tracking data/tracking/tracking.jsonl \
+  --max-frames 300
+```
 
-Se utilizaron asistentes de IA generativa como apoyo para depuracion,
-documentacion y organizacion del codigo. El equipo conserva responsabilidad sobre
-el funcionamiento del pipeline y puede explicar sus componentes.
+Revisa que:
 
-## Creditos y dependencias
+- los robots visibles aparezcan como `A1/A2/R1/R2`;
+- la pelota no salte a manos, porterías u objetos naranjas ajenos;
+- las distancias se mantengan estables cuando los robots no se mueven;
+- los goles solo ocurran cuando la pelota real cruza el área de gol.
+
+## Limitaciones Conocidas
+
+- Las oclusiones fuertes por manos pueden ocultar la pelota o los robots.
+- La pelota puede desaparecer cuando sale de la cancha o queda totalmente
+  cubierta.
+- La calidad de la homografía depende de la visibilidad de la cancha y porterías.
+- La asignación de equipos inicia por lado de cancha y después se bloquea por
+  slots estables.
+- La métrica de distancia ignora intencionalmente movimientos pequeños por jitter.
+
+## Pruebas
+
+Desde `code/`:
+
+```bash
+python3 -m py_compile main.py tools/render_tracking_visualization.py
+pytest test
+```
+
+Para diagnostico:
+
+```bash
+python3 tools/diagnose_ball_tracking_video.py --help
+python3 tools/diagnose_hsv_ball_candidates.py --help
+```
+
+## Entregables
+
+- Pipeline funcional de tracking.
+- `tracking.jsonl` con datos de robots y pelota por frame.
+- Video final de visualización con dashboard.
+- Documentacion open source en este README.
+- Licencia y créditos de terceros en `LICENSE` y `CREDITOS_LICENCIAS.md`.
+- Video demo: `TODO: agregar enlace final`.
+- Reel de Instagram: `TODO: agregar enlace publico`.
+
+## Créditos
 
 Este proyecto usa o integra:
 
@@ -564,47 +321,15 @@ Este proyecto usa o integra:
 - OpenCV.
 - PyTorch.
 - ByteTrack o tracker temporal compatible.
-- Videos de futbol robotico de Copa FutBotMX / Federacion Mexicana de Robotica.
+- Videos de Copa FutBotMX / Federacion Mexicana de Robotica, sujetos a los
+  permisos otorgados por los organizadores.
 
-Cada dependencia conserva su propia licencia. El uso de SAM 3 debe cumplir los
-terminos de licencia del modelo publicados por Meta.
+Consulta `CREDITOS_LICENCIAS.md` para notas de licencia y atribucion de terceros.
 
 ## Licencia
 
-El repositorio incluye un archivo `LICENSE`. Revisar y mantener una licencia abierta
-compatible con las dependencias usadas y con los terminos de SAM 3.
+El codigo del proyecto se distribuye bajo la licencia incluida en `LICENSE`.
 
-## Video demo y reel
-
-- Video demo oficial: `TODO: agregar ruta o enlace final`.
-- Reel de Instagram: `TODO: agregar enlace publico final`.
-- Guion del video demo: `docs/video_demo_script.md`.
-
-## Trabajo futuro
-
-- Reglas arbitrales mas completas.
-- Metricas cuantitativas automaticas de precision/recall para tracking.
-- Mejor manejo de oclusiones severas por manos.
-- Empaquetado de pesos grandes con Git LFS o descarga documentada.
-
-## Cierre de entrega
-
-Documentos clave para evaluacion:
-
-- Convocatoria: `docs/doc.md`.
-- Pendientes revisados: `docs/pendientes_entrega.md`.
-- Guion del video demo: `docs/video_demo_script.md`.
-- Licencias y atribuciones de terceros: `LICENCES.md`.
-- Guia de reproduccion: `code/docs/reproduccion.md`.
-- Contrato de `tracking.jsonl`: `code/docs/contrato_tracking.md`.
-- Explicacion de vision: `code/docs/vision_funciones.md`.
-
-Pendientes criticos aun visibles en esta copia:
-
-- agregar o documentar un video de entrada reproducible para correr los comandos de ejemplo;
-- colocar o documentar la descarga oficial de `code/sam3.pt`;
-- generar y enlazar el video demo oficial de maximo 2 minutos;
-- publicar y enlazar el reel publico de Instagram;
-- agregar capturas/GIFs de resultados al README;
-- fijar versiones exactas de dependencias del entorno de ejecucion;
-- corregir el titular en `LICENSE`, que actualmente aparece como `/usr/local/bin`.
+Los pesos de modelos, videos y dependencias de terceros conservan sus propias
+licencias. Revisa la licencia oficial de SAM 3 antes de redistribuir
+`code/sam3.pt`.
