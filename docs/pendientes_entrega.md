@@ -12,7 +12,7 @@ del proyecto activo `futbotmx`.
 - `code/data/tracking/tracking.jsonl` como ejemplo de salida.
 - Documentos auxiliares en `code/docs/`: reproduccion, contrato de tracking y
   explicacion de funciones de vision.
-- Archivo de atribuciones creado en `LICENCES.md`.
+- Archivo de atribuciones creado en `CREDITOS_LICENCIAS.md`.
 - Guion audiovisual para el video demo en `docs/video_demo_script.md`.
 
 ## Pendientes criticos antes de cerrar entrega
@@ -63,7 +63,7 @@ del proyecto activo `futbotmx`.
 7. Licencia del proyecto
    - Existe `LICENSE`, pero el titular aparece como `/usr/local/bin`.
    - Falta reemplazarlo por el titular real del equipo o institucion.
-   - `LICENCES.md` deja la atribucion de terceros, pero todavia falta verificar
+   - `CREDITOS_LICENCIAS.md` deja la atribucion de terceros, pero todavia falta verificar
      licencias exactas de `sam3.pt`, Ultralytics y `trackers`.
 
 8. Permisos y procedencia de assets
@@ -104,11 +104,11 @@ del proyecto activo `futbotmx`.
       `code/tools/render_tracking_visualization.py`.
     - Falta validar ese flujo oficial en una instalacion limpia.
 
-14. Pruebas automatizadas
-    - Existen pruebas y smoke tests, pero no se observa una corrida reciente en
-      esta revision.
-    - Falta documentar comando unico de pruebas y dependencias necesarias.
-    - Validar IO, eventos, homografia, tracking JSON, render y filtros de balon.
+14. Pruebas y validaciones limpias
+    - `code/tools/check_core_components.py` valida componentes centrales con
+      datos sinteticos y temporales.
+    - Falta ampliar validaciones limpias para homografia, render y filtros de
+      balon sin depender de videos locales o pesos SAM.
 
 15. Higiene de repositorio publico
     - `.gitignore` excluye pesos y videos, pero `tracking.jsonl`, notebooks,
