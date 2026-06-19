@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +11,7 @@ class Config:
     OUTPUT_DIR: Path = DATA_DIR / "outputs"
 
     SAM_MODEL_NAME: str = "sam3.pt"
+    SAM_IMAGE_SIZE: int = int(os.getenv("FUTBOT_SAM_IMGSZ", "640"))
     DETECTION_THRESHOLD: float = 0.5
 
     CAMERA_RESOLUTION: tuple[int, int] = (1920, 1080)
