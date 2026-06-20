@@ -23,9 +23,9 @@ de licencia del proyecto FutBotMX Vision.
 
 ## Dependencias principales
 
-Las dependencias declaradas en `environment.yml` son:
+Las dependencias declaradas en [environment.yml](https://github.com/USER1012007/futbotmx/blob/main/environment.yml) son:
 
-| Dependencia | Uso en el proyecto | Licencia conocida o esperada |
+| Dependencia | Uso en el proyecto | Licencia |
 | --- | --- | --- |
 | Python 3.10 | Lenguaje base del proyecto | Python Software Foundation License |
 | NumPy | Operaciones numericas y arreglos | BSD 3-Clause |
@@ -33,7 +33,7 @@ Las dependencias declaradas en `environment.yml` son:
 | PyTorch | Inferencia con GPU y soporte de modelos | BSD-style |
 | TorchVision | Utilidades del ecosistema PyTorch | BSD-style |
 | Supervision | Detecciones, anotacion y utilidades de vision | MIT |
-| Ultralytics | Carga/ejecucion del modelo SAM y flujo de segmentacion | AGPL-3.0, salvo licencia comercial aplicable |
+| Ultralytics | Carga/ejecucion del modelo SAM y flujo de segmentacion | AGPL-3.0 |
 | `trackers` / ByteTrack | Asociacion temporal de detecciones | MIT |
 
 ## Uso especifico de dependencias en `code/`
