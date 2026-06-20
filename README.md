@@ -344,7 +344,7 @@ visualización sin reprocesar todo el video.
 
 - SAM 3 segmenta bien objetos grandes como cancha y robots, pero la pelota
   naranja puede perderse por tamaño, movimiento, sombras u oclusiones.
-- Combinar SAM 3 con reglas sencillas de color, forma y contexto mejora mucho
+- Combinar SAM 3 con reglas sencillas de color (HSV), forma y contexto mejora mucho
   la estabilidad del balón.
 - El tracking necesita validación temporal; aceptar cada detección cruda produce
   saltos falsos.
@@ -352,8 +352,6 @@ visualización sin reprocesar todo el video.
   campo parcialmente visible y detecciones incompletas.
 - Durante las Notebooks pudimos confirmar como YOLO (para generar bboxes) + SAM 3 para segmentar
   eran un dúo muy dinámico, sin embargo las clases de COCO no incluían una para los robots o la pelota.
-- Acorde al punto anterior, SAM 3 solo es consistente, pero con ayuda de HSV se
-  volvía robusto.
 
 ## Entregables
 
@@ -362,11 +360,11 @@ visualización sin reprocesar todo el video.
 - Video final de visualización con dashboard.
 - Documentación open source en este README.
 - Licencia y créditos de terceros en [LICENSE](https://github.com/USER1012007/futbotmx/blob/main/LICENSE) y [THIRD_PARTY_LICENSES](https://github.com/USER1012007/futbotmx/blob/main/CREDITOS_LICENCIAS.md).
-- Video demo y reel documentados en la sección Videos Generados.
+- Video demo y reel documentados en la sección [Videos Generados](#videos-generados).
 
 ## Integrantes
 
-- García Norrigan Luis Darío
+- Garcia Norrigan Luis Darío
 - Rojas Badillo Emilio
 
 ## Créditos
@@ -387,7 +385,3 @@ Consulta [THIRD_PARTY_LICENSES](https://github.com/USER1012007/futbotmx/blob/mai
 ## Licencia
 
 El código del proyecto se distribuye bajo la licencia incluida en [LICENSE](https://github.com/USER1012007/futbotmx/blob/main/LICENSE).
-
-Los pesos de modelos, videos y dependencias de terceros conservan sus propias
-licencias. Revisa la licencia oficial de SAM 3 antes de redistribuir
-`code/sam3.pt`.
