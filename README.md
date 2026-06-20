@@ -5,6 +5,11 @@ la Copa FutBotMX. Usa SAM 3 para segmentación y agrega tracking temporal,
 filtros geométricos, homografía, detección de eventos y una visualización
 tactica del partido.
 
+Proyecto desarrollado para la **categoría Amateur**. El objetivo principal fue
+construir un flujo funcional y documentado con SAM 3 preentrenado, aprender sus
+fallas en video real de fútbol robótico y reforzarlo con postprocesamiento
+simple, sin fine-tuning.
+
 El sistema rastrea:
 
 - robots con IDs estables: `A1`, `A2`, `R1`, `R2`;
@@ -24,9 +29,10 @@ Vista previa del tracking y dashboard final:
 
 ## Videos Generados
 
-- [Video de maximo 2 minutos](https://drive.google.com/drive/folders/1TNCWizLij_BP07X8GqfHIHY3uKX7xMMg?usp=sharing):
-  se aprecia un partido de futbol robótico con descripción en voz.
-- [Reel de Instagram](https://www.instagram.com/reel/DZyUy8qJg_0/?igsh=MTdwN2N3djdsZ3Ezaw==): reel de mínimo 30 segundos en el
+- [Video público de maximo 2 minutos](https://drive.google.com/drive/folders/1TNCWizLij_BP07X8GqfHIHY3uKX7xMMg?usp=sharing):
+  muestra el video original junto con segmentación, tracking, mapa táctico,
+  dashboard y una descripción breve del enfoque.
+- [Reel público de Instagram](https://www.instagram.com/reel/DZyUy8qJg_0/?igsh=MTdwN2N3djdsZ3Ezaw==): reel de mínimo 30 segundos en el
   que se aprecia el resultado.
 
 ## Inicio Rápido
@@ -84,7 +90,7 @@ pruebas locales, crea un entorno sin CUDA:
 ```bash
 conda create -n futbotmx python=3.10 numpy opencv pytorch torchvision -c pytorch -c conda-forge
 conda activate futbotmx
-pip install supervision ultralytics trackers pytest
+pip install supervision ultralytics trackers
 ```
 
 Ejecuta el pipeline con CPU:
@@ -95,11 +101,19 @@ python3 main.py --device cpu --video ruta/de_tu/video.mp4
 
 ### 3. Agregar Modelo y Video
 
-Coloca los pesos de SAM 3 aqui:
+Descarga los pesos oficiales de SAM 3 desde Hugging Face o el repositorio
+oficial de Meta y colócalos aquí:
 
 ```text
 code/sam3.pt
 ```
+
+El archivo `sam3.pt` no se redistribuye como parte del código fuente por tamaño
+y licencia. El pipeline espera encontrarlo en esa ruta; si no existe, la
+inferencia no puede iniciar.
+
+Después coloca un video de la Copa FutBotMX en `code/data/videos/` o usa una
+ruta absoluta con `--video`.
 
 ### 4. Ejecutar Tracking
 
@@ -235,6 +249,20 @@ Componentes principales:
 - `analysis/stats_engine.py`: estadísticas del partido y métricas acumuladas.
 - `visualization/`: mapa táctico y video final con dashboard.
 
+## Experimentación Amateur
+
+El enfoque no busca entrenar un modelo nuevo. La contribución está en integrar
+SAM 3 con un pipeline reproducible y estudiar sus errores en videos reales:
+
+- Prompts de texto para campo, robots y balón naranja.
+- Asociación temporal con ByteTrack para mantener identidades entre frames.
+- Filtros HSV y de forma para recuperar la pelota cuando SAM 3 la pierde.
+- Búsqueda local por ROI alrededor de objetos recientes.
+- Rechazo de falsos positivos por manos, piel u objetos naranjas fuera de la
+  cancha.
+- Homografía para proyectar posiciones de pixeles a centímetros.
+- Dashboard con posesión, distancia, eventos y trayectorias.
+
 ## Archivos de Salida
 
 ```text
@@ -269,24 +297,23 @@ A1, A2, R1, R2
 El `tracker_id` crudo viene de ByteTrack y no debe usarse como identidad final
 del robot.
 
-## Validación Antes De Corridas Largas
+## Resultados Incluidos
 
-Antes de procesar un partido completo:
+El repositorio incluye una muestra de tracking ya generada en:
 
-```bash
-python3 main.py --video data/videos/my_match.mp4 --max-frames 300 --imgsz 640
-python3 tools/render_tracking_visualization.py \
-  --video data/videos/my_match.mp4 \
-  --tracking data/tracking/tracking.jsonl \
-  --max-frames 300
+```text
+code/data/tracking/tracking.jsonl
 ```
 
-Revisa que:
+Esa muestra corresponde a `video1.mp4` y contiene:
 
-- los robots visibles aparezcan como `A1/A2/R1/R2`;
-- la pelota no salte a manos, porterías u objetos naranjas ajenos;
-- las distancias se mantengan estables cuando los robots no se mueven;
-- los goles solo ocurran cuando la pelota real cruza el área de gol.
+- 254 frames procesados a 30 FPS.
+- 505 detecciones de robots guardadas.
+- balón detectado o recuperado en 180 frames.
+- IDs estables `A1` y `R1` en la muestra corta.
+
+La muestra sirve para inspeccionar el formato de salida y renderizar la
+visualización sin reprocesar todo el video.
 
 ## Limitaciones Conocidas
 
@@ -297,22 +324,22 @@ Revisa que:
 - La asignación de equipos inicia por lado de cancha y después se bloquea por
   slots estables.
 - La métrica de distancia ignora intencionalmente movimientos pequeños por jitter.
+- En algunas tomas la proyección métrica puede colocar objetos cerca o fuera del
+  borde de la cancha cuando la máscara del campo o la orientación no son
+  suficientemente estables.
+- La muestra `tracking.jsonl` incluida es corta y no cubre todos los casos del
+  partido ni todos los robots esperados.
 
-## Pruebas
+## Aprendizajes
 
-Desde `code/`:
-
-```bash
-python3 -m py_compile main.py tools/render_tracking_visualization.py
-pytest test
-```
-
-Para diagnostico:
-
-```bash
-python3 tools/diagnose_ball_tracking_video.py --help
-python3 tools/diagnose_hsv_ball_candidates.py --help
-```
+- SAM 3 segmenta bien objetos grandes como cancha y robots, pero la pelota
+  naranja puede perderse por tamaño, movimiento, sombras u oclusiones.
+- Combinar SAM 3 con reglas sencillas de color, forma y contexto mejora mucho
+  la estabilidad del balón.
+- El tracking necesita validación temporal; aceptar cada detección cruda produce
+  saltos falsos.
+- La homografía aporta métricas útiles, pero es sensible a cámaras inclinadas,
+  campo parcialmente visible y detecciones incompletas.
 
 ## Entregables
 
