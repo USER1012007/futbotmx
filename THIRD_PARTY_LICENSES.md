@@ -83,8 +83,3 @@ los del dataset oficial de la convocatoria
 ## Outputs generados
 Los archivos en `code/data/tracking/` y `code/data/outputs/` son resultados
 generados a partir de los videos, modelos y dependencias anteriores.
-
-## Aviso
-Este documento es una guia de atribucion y cumplimiento para el proyecto. No es
-asesoria legal. Para distribucion publica, comercial o institucional, revisar las
-licencias oficiales de cada dependencia y modelo.
