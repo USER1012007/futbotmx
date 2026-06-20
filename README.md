@@ -1,9 +1,9 @@
 # FutBotMX Vision
 
-Pipeline de vision por computadora para analizar partidos de futbol robotico de
+Pipeline de visión por computadora para analizar partidos de fútbol robótico de
 la Copa FutBotMX. Usa SAM 3 para segmentación y agrega tracking temporal,
 filtros geométricos, homografía, detección de eventos y una visualización
-tactica del partido.
+táctica del partido.
 
 Proyecto desarrollado para la **categoría Amateur**. El objetivo principal fue
 construir un flujo funcional y documentado con SAM 3 preentrenado, aprender sus
@@ -29,7 +29,7 @@ Vista previa del tracking y dashboard final:
 
 ## Videos Generados
 
-- [Video público de maximo 2 minutos](https://drive.google.com/file/d/16Tf50qdmgZ01EZD6rci76g1oS-FLVeVQ/view?usp=drive_link):
+- [Video público de máximo 2 minutos](https://drive.google.com/file/d/16Tf50qdmgZ01EZD6rci76g1oS-FLVeVQ/view?usp=drive_link):
   muestra el video original junto con segmentación, tracking, mapa táctico,
   dashboard y una descripción breve del enfoque.
 - [Reel público de Instagram](https://www.instagram.com/reel/DZyUy8qJg_0/?igsh=MTdwN2N3djdsZ3Ezaw==): reel de mínimo 30 segundos en el
@@ -46,10 +46,10 @@ cd futbotmx
 
 ### 2. Crear Entorno
 
-El proyecto esta pensado para correr con GPU NVIDIA y CUDA. Linux es el entorno
-recomendado para procesar videos largos; Windows tambien funciona si tienes
+El proyecto está pensado para correr con GPU NVIDIA y CUDA. Linux es el entorno
+recomendado para procesar videos largos; Windows también funciona si tienes
 drivers NVIDIA/CUDA correctos. En macOS se puede instalar para pruebas, pero la
-inferencia sera mas lenta si corre en CPU.
+inferencia será más lenta si corre en CPU.
 
 #### Linux
 
@@ -84,7 +84,7 @@ requiere Git Bash, WSL o una terminal compatible con Bash.
 
 #### macOS
 
-`environment.yml` incluye `pytorch-cuda`, que no esta disponible en macOS. Para
+`environment.yml` incluye `pytorch-cuda`, que no está disponible en macOS. Para
 pruebas locales, crea un entorno sin CUDA:
 
 ```bash
@@ -128,7 +128,7 @@ Esto genera:
 data/tracking/tracking.jsonl
 ```
 
-### 5. Renderizar Visualizacion
+### 5. Renderizar Visualización
 
 ```bash
 python3 tools/render_tracking_visualization.py \
@@ -170,7 +170,7 @@ Para una GPU más fuerte:
 python3 main.py --imgsz 1280
 ```
 
-Tambien puedes usar variables de entorno:
+También puedes usar variables de entorno:
 
 ```bash
 FUTBOT_SAM_DEVICE=cuda FUTBOT_SAM_IMGSZ=1280 python3 main.py
@@ -208,7 +208,7 @@ futbotmx/
 │   ├── visualization/   # dashboard, mapa táctico, render final
 │   ├── domain/          # entidades compartidas y modelo de cancha
 │   ├── io_utils/        # lectura de video y tracking I/O
-│   ├── tools/           # scripts de render y diagnostico
+│   ├── tools/           # scripts de render y diagnóstico
 │   └── data/
 │       ├── videos/
 │       ├── tracking/
@@ -243,7 +243,7 @@ Componentes principales:
 - `vision/robot_utils.py`: compuertas temporales de robots y fallback para
   robots perdidos.
 - `vision/team_assignment.py`: IDs estables y slots por equipo.
-- `vision/homography.py`: proyección de pixeles a centímetros.
+- `vision/homography.py`: proyección de píxeles a centímetros.
 - `analysis/event_detector.py`: goles, pases, posesión, colisiones, fuera de
   cancha y robots detenidos.
 - `analysis/stats_engine.py`: estadísticas del partido y métricas acumuladas.
@@ -260,7 +260,7 @@ SAM 3 con un pipeline reproducible y estudiar sus errores en videos reales:
 - Búsqueda local por ROI alrededor de objetos recientes.
 - Rechazo de falsos positivos por manos, piel u objetos naranjas fuera de la
   cancha.
-- Homografía para proyectar posiciones de pixeles a centímetros.
+- Homografía para proyectar posiciones de píxeles a centímetros.
 - Dashboard con posesión, distancia, eventos y trayectorias.
 
 ## Archivos de Salida
@@ -346,9 +346,9 @@ visualización sin reprocesar todo el video.
 - Pipeline funcional de tracking.
 - `tracking.jsonl` con datos de robots y pelota por frame.
 - Video final de visualización con dashboard.
-- Documentacion open source en este README.
+- Documentación open source en este README.
 - Licencia y créditos de terceros en `LICENSE` y `CREDITOS_LICENCIAS.md`.
-- Video demo y reel documentados en la seccion Videos Generados.
+- Video demo y reel documentados en la sección Videos Generados.
 
 ## Integrantes
 
@@ -365,14 +365,14 @@ Este proyecto usa o integra:
 - OpenCV.
 - PyTorch.
 - ByteTrack o tracker temporal compatible.
-- Videos de Copa FutBotMX / Federacion Mexicana de Robotica, sujetos a los
+- Videos de Copa FutBotMX / Federación Mexicana de Robótica, sujetos a los
   permisos otorgados por los organizadores.
 
-Consulta `CREDITOS_LICENCIAS.md` para notas de licencia y atribucion de terceros.
+Consulta `CREDITOS_LICENCIAS.md` para notas de licencia y atribución de terceros.
 
 ## Licencia
 
-El codigo del proyecto se distribuye bajo la licencia incluida en `LICENSE`.
+El código del proyecto se distribuye bajo la licencia incluida en `LICENSE`.
 
 Los pesos de modelos, videos y dependencias de terceros conservan sus propias
 licencias. Revisa la licencia oficial de SAM 3 antes de redistribuir
