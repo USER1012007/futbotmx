@@ -10,13 +10,6 @@ construir un flujo funcional y documentado con SAM 3 preentrenado, aprender sus
 fallas en video real de fútbol robótico y reforzarlo con postprocesamiento
 simple, sin fine-tuning.
 
-El sistema rastrea:
-
-- robots con IDs estables: `A1`, `A2`, `R1`, `R2`;
-- la pelota naranja;
-- posesión por equipo, goles, colisiones, robots detenidos y distancia recorrida;
-- un video final con frame original, mapa táctico y estadísticas del partido.
-
 > Este proyecto no hace fine-tuning de SAM 3. Usa el modelo preentrenado
 > `sam3.pt` y mejora la confiabilidad con postprocesamiento, recuperación local
 > y validación temporal.
