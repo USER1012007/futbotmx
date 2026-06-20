@@ -29,7 +29,7 @@ Vista previa del tracking y dashboard final:
 
 ## Videos Generados
 
-- [Video público de maximo 2 minutos](https://drive.google.com/drive/folders/1TNCWizLij_BP07X8GqfHIHY3uKX7xMMg?usp=sharing):
+- [Video público de maximo 2 minutos](https://drive.google.com/file/d/16Tf50qdmgZ01EZD6rci76g1oS-FLVeVQ/view?usp=drive_link):
   muestra el video original junto con segmentación, tracking, mapa táctico,
   dashboard y una descripción breve del enfoque.
 - [Reel público de Instagram](https://www.instagram.com/reel/DZyUy8qJg_0/?igsh=MTdwN2N3djdsZ3Ezaw==): reel de mínimo 30 segundos en el
