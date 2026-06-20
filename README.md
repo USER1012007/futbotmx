@@ -21,6 +21,24 @@ El sistema rastrea:
 > `sam3.pt` y mejora la confiabilidad con postprocesamiento, recuperación local
 > y validación temporal.
 
+## Índice
+
+- [Demo](#demo)
+- [Videos Generados](#videos-generados)
+- [Inicio Rápido](#inicio-rápido)
+- [Requisitos](#requisitos)
+- [Estructura del Proyecto](#estructura-del-proyecto)
+- [Cómo Funciona](#cómo-funciona)
+- [Experimentación Amateur](#experimentación-amateur)
+- [Archivos de Salida](#archivos-de-salida)
+- [Resultados Incluidos](#resultados-incluidos)
+- [Limitaciones Conocidas](#limitaciones-conocidas)
+- [Aprendizajes](#aprendizajes)
+- [Entregables](#entregables)
+- [Integrantes](#integrantes)
+- [Créditos](#créditos)
+- [Licencia](#licencia)
+
 ## Demo
 
 Vista previa del tracking y dashboard final:
