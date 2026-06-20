@@ -257,11 +257,15 @@ SAM 3 con un pipeline reproducible y estudiar sus errores en videos reales:
 - Prompts de texto para campo, robots y balón naranja.
 - Asociación temporal con ByteTrack para mantener identidades entre frames.
 - Filtros HSV y de forma para recuperar la pelota cuando SAM 3 la pierde.
-- Búsqueda local por ROI alrededor de objetos recientes.
+- Búsqueda local por ROI *(Region of Interest)* alrededor de objetos recientes.
 - Rechazo de falsos positivos por manos, piel u objetos naranjas fuera de la
   cancha (contexto de cancha).
 - Homografía para proyectar posiciones de píxeles a centímetros.
-- Dashboard con posesión, distancia, eventos y trayectorias.
+- Dashboard con posesión, distancia, marcador de goles y eventos.
+- Tactical Map con trayectorias (rastros), cruces de colisión y vector de dirección de la pelota.
+- Estado de pánico cuando hay inestabilidades bruscas en el tracking (basado en el modo de pánico del
+  parser de un compilador para no detectar errores en cascada).
+- Detección de eventos con cooldowns por tipo para evitar duplicados en ráfagas de frames.
 
 ## Archivos de Salida
 
@@ -327,6 +331,12 @@ visualización sin reprocesar todo el video.
 - En algunas tomas la proyección métrica puede colocar objetos cerca o fuera del
   borde de la cancha cuando la máscara del campo o la orientación no son
   suficientemente estables.
+- Los robots re-integrados al partido luego de haber sido sacados por los árbitros pueden
+  ser detectados como del equipo contrario, sucede también cuando se salen de la toma y vuelven
+  (aunque estén dentro de la cancha).
+- La dirección de robots y balón se almacena en el JSON de cada frame. Tras evaluar los resultados,
+  la dirección de los robots presentó demasiado ruido para ser informativa en la visualización,
+  por lo que se optó por mostrar únicamente la del balón.
 - La muestra `tracking.jsonl` incluida es corta y no cubre todos los casos del
   partido ni todos los robots esperados.
 
@@ -340,6 +350,10 @@ visualización sin reprocesar todo el video.
   saltos falsos.
 - La homografía aporta métricas útiles, pero es sensible a cámaras inclinadas,
   campo parcialmente visible y detecciones incompletas.
+- Durante las Notebooks pudimos confirmar como YOLO (para generar bboxes) + SAM 3 para segmentar
+  eran un dúo muy dinámico, sin embargo las clases de COCO no incluían una para los robots o la pelota.
+- Acorde al punto anterior, SAM 3 solo es consistente, pero con ayuda de HSV se
+  volvía robusto.
 
 ## Entregables
 
