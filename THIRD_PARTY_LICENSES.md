@@ -4,9 +4,9 @@ de licencia del proyecto FutBotMX Vision.
 
 ## Proyecto
 - **Nombre:** FutBotMX Vision
-- **Proposito:** sistema de vision por computadora para analizar partidos de
-  futbol robotico de la Copa FutBotMX.
-- **Licencia del codigo del proyecto:** MIT.
+- **Propósito:** sistema de vision por computadora para analizar partidos de
+  futbol robótico de la Copa FutBotMX.
+- **Licencia del código del proyecto:** MIT.
 
 ## Autores y contribucion
 - Desarrollo del pipeline de vision, tracking, analisis y visualizacion:
