@@ -368,7 +368,7 @@ Este proyecto usa o integra:
 - Videos de Copa FutBotMX / Federación Mexicana de Robótica, sujetos a los
   permisos otorgados por los organizadores.
 
-Consulta `CREDITOS_LICENCIAS.md` para notas de licencia y atribución de terceros.
+Consulta [THIRD_PARTY_LICENSES](https://github.com/USER1012007/futbotmx/blob/main/CREDITOS_LICENCIAS.md) para notas de licencia y atribución de terceros.
 
 ## Licencia
 
