@@ -29,7 +29,7 @@ Pipeline end-to-end que toma video crudo de un partido de fútbol robótico y pr
   robots, balón naranja y campo verde, sin fine-tuning ni detector entrenado
   adicional en el pipeline.
 - **Robustez del balón:** combinación de candidatos de SAM 3, fallback HSV y
-  template matching, con inferencia en ROI cuando la búsqueda global no produce
+  template matching, con inferencia en ROI *(Region of Interest)* cuando la búsqueda global no produce
   una pelota físicamente plausible. El campo también se segmenta automáticamente
   con SAM 3, sin puntos de calibración manuales.
 - **Tracking e identidad:** ByteTrack mantiene `tracker_id` temporales, y un
@@ -306,7 +306,7 @@ SAM 3 con un pipeline reproducible y estudiar sus errores en videos reales:
 - Prompts de texto para campo, robots y balón naranja.
 - Asociación temporal con ByteTrack para mantener identidades entre frames.
 - Filtros HSV y de forma para recuperar la pelota cuando SAM 3 la pierde.
-- Búsqueda local por ROI *(Region of Interest)* alrededor de objetos recientes.
+- Búsqueda local por ROI alrededor de objetos recientes.
 - Rechazo de falsos positivos por manos, piel u objetos naranjas fuera de la
   cancha (contexto de cancha).
 - Homografía para proyectar posiciones de píxeles a centímetros.
@@ -423,7 +423,7 @@ visualización sin reprocesar todo el video.
   visual, no como un congelamiento completo del pipeline.
 
 - YOLO + SAM 3 como dúo, usando YOLO para proponer bboxes y SAM 3 para
-  segmentar dentro de ellas, fue útil en notebooks exploratorios. Sin embargo,
+  segmentar dentro de ellas, fue útil en los notebooks. Sin embargo,
   el pipeline final no depende de YOLO: los detectores preentrenados de uso
   general no modelan de forma específica los robots de fútbol robótico ni la
   pelota de la competencia, y el fine-tuning queda fuera del alcance de la
