@@ -259,7 +259,7 @@ SAM 3 con un pipeline reproducible y estudiar sus errores en videos reales:
 - Filtros HSV y de forma para recuperar la pelota cuando SAM 3 la pierde.
 - Búsqueda local por ROI alrededor de objetos recientes.
 - Rechazo de falsos positivos por manos, piel u objetos naranjas fuera de la
-  cancha.
+  cancha (contexto de cancha).
 - Homografía para proyectar posiciones de píxeles a centímetros.
 - Dashboard con posesión, distancia, eventos y trayectorias.
 
@@ -347,7 +347,7 @@ visualización sin reprocesar todo el video.
 - `tracking.jsonl` con datos de robots y pelota por frame.
 - Video final de visualización con dashboard.
 - Documentación open source en este README.
-- Licencia y créditos de terceros en `LICENSE` y `CREDITOS_LICENCIAS.md`.
+- Licencia y créditos de terceros en [LICENSE](https://github.com/USER1012007/futbotmx/blob/main/LICENSE) y [THIRD_PARTY_LICENSES](https://github.com/USER1012007/futbotmx/blob/main/CREDITOS_LICENCIAS.md).
 - Video demo y reel documentados en la sección Videos Generados.
 
 ## Integrantes
@@ -372,7 +372,7 @@ Consulta [THIRD_PARTY_LICENSES](https://github.com/USER1012007/futbotmx/blob/mai
 
 ## Licencia
 
-El código del proyecto se distribuye bajo la licencia incluida en `LICENSE`.
+El código del proyecto se distribuye bajo la licencia incluida en [LICENSE](https://github.com/USER1012007/futbotmx/blob/main/LICENSE).
 
 Los pesos de modelos, videos y dependencias de terceros conservan sus propias
 licencias. Revisa la licencia oficial de SAM 3 antes de redistribuir
