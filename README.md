@@ -21,6 +21,37 @@ El sistema rastrea:
 > `sam3.pt` y mejora la confiabilidad con postprocesamiento, recuperación local
 > y validación temporal.
 
+## TL;DR
+
+Pipeline end-to-end que toma video crudo de un partido de fútbol robótico y produce tracking, eventos, estadísticas y visualización táctica:
+
+- **Detección:** SAM 3 (`SAM3SemanticPredictor`) con prompts de texto para
+  robots, balón naranja y campo verde, sin fine-tuning ni detector entrenado
+  adicional en el pipeline.
+- **Robustez del balón:** combinación de candidatos de SAM 3, fallback HSV y
+  template matching, con inferencia en ROI cuando la búsqueda global no produce
+  una pelota físicamente plausible. El campo también se segmenta automáticamente
+  con SAM 3, sin puntos de calibración manuales.
+- **Tracking e identidad:** ByteTrack mantiene `tracker_id` temporales, y un
+  sistema de slots estables asigna IDs persistentes `A1`, `A2`, `R1`, `R2` por
+  posición en cancha. La re-identificación usa distancia al slot conocido más
+  cercano: 55 cm en coordenadas métricas o 260 px cuando no hay homografía.
+- **Homografía automática:** máscara de campo de SAM 3 → contorno → 4 esquinas
+  → porterías amarilla/azul por HSV para fijar orientación → proyección a una
+  cancha métrica de 243 x 182 cm.
+- **Eventos:** 11 tipos detectables: gol válido/inválido, posesión, pase,
+  colisión, fuera de cancha, robot detenido, reposición de balón/robot, sacar
+  robot y evento de pánico.
+- **Evento de pánico:** inspirado en estrategias de recuperación de parsers de
+  compiladores; marca frames con cambios abruptos de IDs entre frames
+  consecutivos como señal de ruido visual o tracking inestable.
+- **Estadísticas:** métricas por robot y equipo: posesión, distancia recorrida,
+  pases, colisiones, goles, penalizaciones y velocidades.
+- **Visualización:** video anotado con dashboard de partido y Tactical Map con
+  trayectorias, posiciones proyectadas, eventos y dirección del balón.
+
+📹 [Video público de máximo 2 minutos](https://drive.google.com/file/d/16Tf50qdmgZ01EZD6rci76g1oS-FLVeVQ/view?usp=drive_link) · 🎬 [Reel público de Instagram](https://www.instagram.com/reel/DZyUy8qJg_0/?igsh=MTdwN2N3djdsZ3Ezaw==)
+
 ## Índice
 
 - [Demo](#demo)
@@ -234,7 +265,7 @@ futbotmx/
 ├── docs/
 ├── environment.yml
 ├── LICENSE
-├── CREDITOS_LICENCIAS.md
+├── THIRD_PARTY_LICENSES.md
 └── README.md
 ```
 
@@ -281,8 +312,8 @@ SAM 3 con un pipeline reproducible y estudiar sus errores en videos reales:
 - Homografía para proyectar posiciones de píxeles a centímetros.
 - Dashboard con posesión, distancia, marcador de goles y eventos.
 - Tactical Map con trayectorias (rastros), cruces de colisión y vector de dirección de la pelota.
-- Estado de pánico cuando hay inestabilidades bruscas en el tracking (basado en el modo de pánico del
-  parser de un compilador para no detectar errores en cascada).
+- Evento de pánico cuando hay inestabilidades bruscas en el tracking, inspirado en
+  el modo de recuperación de errores de parsers de compiladores.
 - Detección de eventos con cooldowns por tipo para evitar duplicados en ráfagas de frames.
 
 ## Archivos de Salida
@@ -360,17 +391,45 @@ visualización sin reprocesar todo el video.
 
 ## Aprendizajes
 
-- SAM 3 segmenta bien objetos grandes como cancha y robots, pero la pelota
-  naranja puede perderse por tamaño, movimiento, sombras u oclusiones.
-- Combinar SAM 3 con reglas sencillas de color (HSV), forma y contexto mejora mucho
-  la estabilidad del balón.
-- El tracking necesita validación temporal; aceptar cada detección cruda produce
-  saltos falsos.
-- La homografía aporta métricas útiles, pero es sensible a cámaras inclinadas,
-  campo parcialmente visible y detecciones incompletas.
-- Durante las Notebooks pudimos confirmar como YOLO (para generar bboxes) + SAM 3 para segmentar
-  eran un dúo muy dinámico, sin embargo las clases de COCO no incluían una para los robots o la pelota.
+- SAM 3 detecta bien robots y campo en condiciones normales, pero la pelota
+  naranja resultó ser el objeto más difícil del dominio: su tamaño pequeño, las
+  interrupciones de árbitros con manos o ropa de colores similares, y la
+  presencia de partes o reflejos naranjas en la escena generan falsos positivos
+  y pérdidas de detección. La solución fue un sistema de recuperación por capas
+  que combina candidatos de SAM 3, fallback HSV y template matching, y recurre
+  a inferencia en ROI cuando la búsqueda global no produce una pelota
+  físicamente plausible.
 
+- La cámara en movimiento fue uno de los principales factores de inestabilidad
+  en la homografía. En videos grabados desde celular, las esquinas del campo o
+  las porterías pueden salir de cuadro. Para manejarlo, el sistema estima la
+  homografía automáticamente desde la máscara del campo, usa las porterías
+  amarilla y azul para fijar la orientación, conserva la última orientación
+  conocida cuando las porterías no son visibles y suaviza la matriz H
+  temporalmente.
+
+- ByteTrack mantiene identidad por asociación temporal, pero puede perder el
+  hilo cuando un robot desaparece y regresa durante interrupciones u oclusiones.
+  Por eso se añadió un sistema de slots estables (`A1`, `A2`, `R1`, `R2`) que
+  re-asigna identidad por posición métrica en cancha, o por posición en pixeles
+  si la homografía no está disponible, en lugar de depender únicamente del
+  `tracker_id` crudo.
+
+- Al revisar las interrupciones y oclusiones de los videos, quedó claro que
+  hacía falta detectar inestabilidad brusca del tracking. El evento de pánico,
+  inspirado en estrategias de recuperación de parsers de compiladores, marca
+  frames donde cambian demasiados IDs entre frames consecutivos. En la
+  implementación actual funciona como señal de alerta del sistema ante ruido
+  visual, no como un congelamiento completo del pipeline.
+
+- YOLO + SAM 3 como dúo, usando YOLO para proponer bboxes y SAM 3 para
+  segmentar dentro de ellas, fue útil en notebooks exploratorios. Sin embargo,
+  el pipeline final no depende de YOLO: los detectores preentrenados de uso
+  general no modelan de forma específica los robots de fútbol robótico ni la
+  pelota de la competencia, y el fine-tuning queda fuera del alcance de la
+  categoría Amateur. Eso confirmó que el camino práctico era reforzar SAM 3 con
+  postprocesamiento, tracking y recuperación visual específica del dominio.
+  
 ## Entregables
 
 - Pipeline funcional de tracking.
